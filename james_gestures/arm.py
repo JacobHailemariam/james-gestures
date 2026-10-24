@@ -1,0 +1,281 @@
+"""Gestures -> safe arm commands.
+
+The safety model, in order of priority:
+  1. The arm starts DISARMED. Nothing moves until you hold an open palm for `arm_hold_s`.
+  2. A fist held for `stop_hold_s` sends STOP and disarms. Use it like a soft kill switch.
+     (Keep a real hardware kill switch on the servo power line too. This is not a substitute.)
+  3. If the hand leaves the camera, the arm holds still; after `lost_disarm_s` it disarms.
+  4. Every joint target is clamped to its limits, smoothed, and rate-limited in deg/s,
+     so a tracking glitch can never snap a joint across its range.
+
+Steering while ARMED is a joystick, one joint at a time ("point to drive"):
+  open palm             -> idle, nothing moves
+  point (1 finger)      -> clutch in. Where you start pointing is the zero. Hand right/left of it turns the
+                           base, above/below it lifts/lowers the shoulder. Speed grows with the offset
+                           (dead zone, then up to max_speed). Only the larger axis moves. Un-point = stop.
+  peace (2 fingers)     -> same joystick for the far joints: left/right = wrist, up/down = elbow
+  pinch / release       -> claw close / open
+Hand position is never mapped to an angle, so a jitter or a lean can't move the arm: only a deliberate
+offset from where you clutched in does.
+Voice (voice.py -> ArmController.voice): "stop" always works, "grab"/"release" drive the claw, a preset name
+("raise", "reach", "home", "tuck") moves there and pauses hand steering until "follow". Voice can never ARM:
+that still needs the held open palm. Presets obey the same clamps and rate limits as the hand.
+
+Output is a small text protocol (one command per line), see README.md and firmware/arm_receiver.ino:
+  ARM 1 | ARM 0 | STOP | J <joint> <degrees> | CLAW 1 | CLAW 0
+"""
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass, field
+
+from .gestures import GestureFrame
+
+
+@dataclass
+class Joint:
+    name: str
+    lo: float
+    hi: float
+    home: float
+    max_speed: float = 60.0     # deg/s, keep low near the user's head
+
+    def clamp(self, v: float) -> float:
+        return max(self.lo, min(self.hi, v))
+
+
+def default_joints() -> dict[str, Joint]:
+    # base capped at 270 deg so the cables can't wrap; tune lo/hi/home on the real arm
+    return {
+        "base": Joint("base", 0, 270, 135, 45),
+        "shoulder": Joint("shoulder", 20, 160, 90, 45),
+        "elbow": Joint("elbow", 20, 160, 90, 60),
+        "wrist": Joint("wrist", 0, 180, 90, 90),
+    }
+
+
+PRESETS = {
+    "home": {"base": 135, "shoulder": 90, "elbow": 90, "wrist": 90},
+    "raise": {"shoulder": 150, "elbow": 120},
+    "reach": {"shoulder": 110, "elbow": 40},
+    "tuck": {"shoulder": 30, "elbow": 150},
+}
+
+
+@dataclass
+class ArmConfig:
+    arm_hold_s: float = 1.0       # open palm this long to arm
+    stop_hold_s: float = 0.3      # fist this long to STOP
+    lost_disarm_s: float = 2.0    # hand gone this long while armed -> disarm
+    smooth: float = 0.25          # EMA factor on targets (0..1, lower = smoother, laggier)
+    deadband_deg: float = 1.0     # don't resend a joint unless it moved this much
+    stick_dead: float = 0.04      # joystick: offset from the clutch point (fraction of frame) ignored below this
+    stick_full: float = 0.20      # ... and full speed at this offset
+    mirror: bool = True           # webcam is mirrored: moving your hand right should turn the arm right
+    pinch_claw: bool = True       # pinch closes / release opens the claw (set False to leave the claw to voice)
+
+
+class ArmController:
+    def __init__(self, link, joints: dict[str, Joint] | None = None, cfg: ArmConfig | None = None,
+                 clock=time.monotonic):
+        self.link = link
+        self.j = joints or default_joints()
+        self.cfg = cfg or ArmConfig()
+        self.clock = clock
+        self.armed = False
+        self.pos = {n: jt.home for n, jt in self.j.items()}       # where we told the arm to be
+        self.target = dict(self.pos)
+        self._sent = {}
+        self._claw = None                 # last claw state sent (None = never sent)
+        self._last_pinch = False          # claw follows pinch CHANGES, so a voice "grab" isn't undone next frame
+        self.steering = True              # False while a preset plays: the hand stops aiming the arm
+        self._anchor = None               # fingertip (norm) where the current point/peace began
+        self.active_joint = None          # joint the joystick is driving right now (for the HUD / sim)
+        self.drive = 0.0                  # -1..1 joystick deflection on that joint
+        self._palm_since = self._fist_since = None
+        self._last_seen = self._last_tick = clock()
+        self._palm_ref = None
+        self.state = "DISARMED"
+
+    # ---------- public ----------
+    def update(self, g: GestureFrame) -> str:
+        now = self.clock()
+        dt = max(0.0, min(0.2, now - self._last_tick))
+        self._last_tick = now
+        c = self.cfg
+
+        if g.hand is None:
+            self._palm_since = self._fist_since = None
+            if self.armed and not self.steering:
+                # a voice preset is playing: keep moving to it even with no hand in view
+                self.state = "PRESET"
+                self._step(dt)
+                return self.state
+            if self.armed and now - self._last_seen > c.lost_disarm_s:
+                self._disarm("hand lost")
+            elif self.armed:
+                self.state = "HOLD"
+                self.target = dict(self.pos)          # freeze where we are
+            return self.state
+        self._last_seen = now
+
+        # fist -> STOP (checked first, always wins)
+        self._fist_since = (self._fist_since or now) if g.fist else None
+        if self._fist_since is not None and now - self._fist_since >= c.stop_hold_s:
+            if self.armed or self.state != "STOPPED":
+                self.link.send("STOP")
+                self._disarm("fist", stopped=True)
+            return self.state
+
+        # open palm -> ARM
+        self._palm_since = (self._palm_since or now) if g.open_palm else None
+        if not self.armed and self._palm_since is not None and now - self._palm_since >= c.arm_hold_s:
+            self.armed, self.state = True, "ARMED"
+            self.steering = True
+            self._palm_ref = g.palm_px or None
+            self.link.send("ARM 1")
+            self._palm_since = None
+
+        pinch_changed = g.pinch != self._last_pinch
+        self._last_pinch = g.pinch
+        if not self.armed:
+            return self.state
+
+        self.state = "ARMED" if self.steering else "PRESET"
+        if self.steering:
+            self._joystick(g, dt)
+        if pinch_changed and c.pinch_claw:
+            self.set_claw(1 if g.pinch else 0)
+        self._step(dt)
+        return self.state
+
+    def stop(self) -> None:
+        """Software STOP from a key, a voice command or a UI button: freeze and disarm."""
+        self.link.send("STOP")
+        self._disarm("stop", stopped=True)
+
+    def set_claw(self, closed: int) -> bool:
+        """Close (1) or open (0) the claw, from a pinch or from voice. Only while armed."""
+        if not self.armed:
+            return False
+        if closed != self._claw:
+            self._claw = closed
+            self.link.send(f"CLAW {closed}")
+        return True
+
+    def follow(self) -> bool:
+        """Hand steering back on after a preset (voice "follow")."""
+        if not self.armed:
+            return False
+        self.steering = True
+        return True
+
+    def goto_preset(self, name: str) -> bool:
+        """Move to a named pose. The hand stops steering until follow() so it can't drag the arm off the preset."""
+        p = PRESETS.get(name)
+        if p is None or not self.armed:
+            return False
+        for k, v in p.items():
+            self.target[k] = self.j[k].clamp(v)
+        self.steering = False
+        return True
+
+    def voice(self, cmd: str) -> bool:
+        """Apply one voice command (see voice.py). STOP works even when disarmed; voice can never ARM."""
+        if cmd == "stop":
+            self.stop()
+            return True
+        if cmd == "grab":
+            return self.set_claw(1)
+        if cmd == "release":
+            return self.set_claw(0)
+        if cmd == "follow":
+            return self.follow()
+        return self.goto_preset(cmd)
+
+    def tick(self) -> None:
+        """Advance toward targets without a new gesture frame (e.g. while a preset plays)."""
+        now = self.clock()
+        dt = max(0.0, min(0.2, now - self._last_tick))
+        self._last_tick = now
+        if self.armed:
+            self._step(dt)
+
+    # ---------- internals ----------
+    def _joystick(self, g: GestureFrame, dt: float) -> None:
+        """Point / peace = clutch in; offset from where it began drives one joint at a speed."""
+        c = self.cfg
+        pair = ("base", "shoulder") if g.point else ("wrist", "elbow") if g.peace else None
+        if pair is None or g.norm is None:
+            self._anchor, self.active_joint, self.drive = None, None, 0.0
+            self.target = dict(self.pos)                            # idle: hold still
+            return
+        if self._anchor is None:
+            self._anchor = g.norm
+        dx, dy = g.norm[0] - self._anchor[0], self._anchor[1] - g.norm[1]   # dy: up = positive
+        if c.mirror:
+            dx = -dx
+        name, off = (pair[0], dx) if abs(dx) >= abs(dy) else (pair[1], dy)
+        mag = (abs(off) - c.stick_dead) / max(c.stick_full - c.stick_dead, 1e-6)
+        drive = (1 if off > 0 else -1) * max(0.0, min(1.0, mag))
+        self.active_joint, self.drive = name, drive
+        jt = self.j[name]
+        self.target = dict(self.pos)
+        self.target[name] = jt.clamp(self.pos[name] + drive * jt.max_speed * dt)
+
+    def _aim(self, name: str, raw: float) -> None:
+        jt = self.j[name]
+        a = self.cfg.smooth
+        self.target[name] = jt.clamp(self.target[name] + a * (jt.clamp(raw) - self.target[name]))
+
+    def _step(self, dt: float) -> None:
+        for n, jt in self.j.items():
+            err = self.target[n] - self.pos[n]
+            lim = jt.max_speed * dt
+            self.pos[n] = jt.clamp(self.pos[n] + max(-lim, min(lim, err)))
+            last = self._sent.get(n)
+            if last is None or abs(self.pos[n] - last) >= self.cfg.deadband_deg:
+                self.link.send(f"J {n} {self.pos[n]:.1f}")
+                self._sent[n] = self.pos[n]
+
+    def _disarm(self, why: str, stopped: bool = False) -> None:
+        if self.armed and not stopped:
+            self.link.send("ARM 0")
+        self.armed = False
+        self.state = "STOPPED" if stopped else "DISARMED"
+        self.target = dict(self.pos)
+        self.steering = True
+        self._anchor, self.active_joint, self.drive = None, None, 0.0
+        self._palm_since = self._fist_since = None
+        # the claw is NOT reset: re-arming must never open it by itself and drop what it is holding
+
+
+@dataclass
+class PrintLink:
+    """Dry run: prints commands instead of sending them. Default, so nothing moves by accident."""
+    log: list = field(default_factory=list)
+    quiet: bool = False
+
+    def send(self, line: str) -> None:
+        self.log.append(line)
+        if not self.quiet:
+            print("->", line)
+
+
+class SerialLink:
+    """Writes commands to the microcontroller over USB serial (pip install pyserial)."""
+
+    def __init__(self, port: str, baud: int = 115200):
+        import serial
+        self.ser = serial.Serial(port, baud, timeout=0)
+        time.sleep(2.0)            # most Arduinos reset when the port opens
+
+    def send(self, line: str) -> None:
+        self.ser.write((line + "\n").encode())
+
+    def close(self) -> None:
+        try:
+            self.ser.write(b"STOP\n")
+            self.ser.close()
+        except Exception:
+            pass

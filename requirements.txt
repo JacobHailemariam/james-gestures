@@ -1,0 +1,5 @@
+mediapipe>=0.10.14
+opencv-python>=4.9
+numpy>=1.26
+pyserial>=3.5
+pytest>=8
