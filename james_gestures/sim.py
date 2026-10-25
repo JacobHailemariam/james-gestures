@@ -15,7 +15,8 @@ from pathlib import Path
 
 MODEL = Path(__file__).resolve().parent.parent / "sim" / "arm.xml"
 HOME = {"base": 135.0, "shoulder": 90.0, "elbow": 90.0, "wrist": 90.0}
-CLAW_OPEN, CLAW_CLOSED = 0.02, 0.0          # finger offset in metres
+CLAW_OPEN, CLAW_CLOSED = 0.0, 0.02          # slide of each finger toward the centre line, metres:
+                                            # 0 = fingers at their mounts, 4 cm apart (open); 0.02 = touching (closed)
 
 
 class SimLink:
