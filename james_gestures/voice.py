@@ -35,6 +35,7 @@ from __future__ import annotations
 import json
 import queue
 import threading
+import time
 
 WORDS = {
     "stop": "stop", "freeze": "stop", "halt": "stop",
@@ -114,7 +115,14 @@ def parse_result(result: dict, min_conf: float = 0.6, wake=WAKE_WORDS, window: i
 
 
 class VoiceListener:
-    """Listens in a background thread. poll() returns the commands heard since the last call."""
+    """Listens in a background thread. poll() returns the commands heard since the last call.
+
+    Health: `problem` is "" while voice works, otherwise a short reason for the HUD ("mic silent 3 s",
+    "voice thread died: ..."). A bad audio chunk no longer kills the thread, a dead thread or a mic that
+    stopped delivering audio is noticed by poll(), and poll() tries to reopen the mic every few seconds."""
+
+    STALL_S = 2.0          # blocks arrive every 0.25 s; this long with none means the mic stream stopped
+    RETRY_S = 3.0          # how often poll() tries to reopen a stalled mic
 
     def __init__(self, model_path: str | None = None, device=None, min_conf: float = 0.6,
                  sample_rate: int = 16000, start: bool = True, wake=WAKE_WORDS, stop_streak: int = 2):
@@ -128,50 +136,102 @@ class VoiceListener:
         grammar = json.dumps(sorted(WORDS) + [SAVE_WORD] + list(self.wake or ()) + ["[unk]"])
         self.rec = vosk.KaldiRecognizer(self.model, sample_rate, grammar)
         self.rec.SetWords(True)
+        self._init_state(min_conf, sample_rate, device, stop_streak)
+        if start:
+            self.start()
+
+    def _init_state(self, min_conf=0.6, sample_rate=16000, device=None, stop_streak=2, clock=time.monotonic):
         self.min_conf, self.rate, self.device = min_conf, sample_rate, device
         self.stop_streak = stop_streak       # consecutive partials that must show "stop" before acting early
         self.heard = ""                      # last thing recognised, for the HUD
+        self.problem = ""                    # "" = healthy; otherwise why voice is not working right now
+        self.clock = clock
         self._audio: queue.Queue[bytes] = queue.Queue()
         self._cmds: queue.Queue[str] = queue.Queue()
         self._stop_sent = False              # one early stop per utterance
         self._stop_seen = 0                  # how many partials in a row showed a stop word
         self._running = False
         self._thread = None
-        if start:
-            self.start()
+        self._stream = None
+        self._last_audio = clock()
+        self._next_retry = 0.0
+        self._fatal = ""                     # set if the worker thread itself ended with an exception
 
     def start(self) -> None:
         self._running = True
-        self._stream = self._sd.RawInputStream(samplerate=self.rate, blocksize=4000, device=self.device,
-                                               dtype="int16", channels=1, callback=self._on_audio)
-        self._stream.start()
+        self._open_stream()
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
 
+    def _open_stream(self) -> None:
+        if self._stream is not None:
+            try:
+                self._stream.close()
+            except Exception:
+                pass
+        self._stream = self._sd.RawInputStream(samplerate=self.rate, blocksize=4000, device=self.device,
+                                               dtype="int16", channels=1, callback=self._on_audio)
+        self._stream.start()
+        self._last_audio = self.clock()
+
     def _on_audio(self, data, frames, time_info, status) -> None:
+        self._last_audio = self.clock()
         self._audio.put(bytes(data))
 
     def _loop(self) -> None:
-        while self._running:
-            try:
-                data = self._audio.get(timeout=0.2)
-            except queue.Empty:
-                continue
-            if self.rec.AcceptWaveform(data):
-                res = json.loads(self.rec.Result())
-                self.heard = res.get("text", "")
-                for c in parse_result(res, self.min_conf, self.wake):
-                    if c == "stop" and self._stop_sent:
-                        continue                 # already sent from the partial result
-                    self._cmds.put(c)
-                self._stop_sent, self._stop_seen = False, 0
-            else:
-                part = json.loads(self.rec.PartialResult()).get("partial", "")
-                self._stop_seen = self._stop_seen + 1 if self._partial_stop(part) else 0
-                if not self._stop_sent and self._stop_seen >= self.stop_streak:
-                    self._stop_sent = True       # react to "stop" without waiting for the pause after it
-                    self.heard = part
-                    self._cmds.put("stop")
+        try:
+            while self._running:
+                try:
+                    data = self._audio.get(timeout=0.2)
+                except queue.Empty:
+                    continue
+                try:
+                    self._process(data)
+                except Exception as e:           # one bad chunk must not end voice for the rest of the demo
+                    self.problem = f"voice error: {e}"[:60]
+        except BaseException as e:               # anything else: record it so poll() can say so
+            self._fatal = f"voice thread died: {e}"[:60]
+            raise
+
+    def _process(self, data: bytes) -> None:
+        if self.rec.AcceptWaveform(data):
+            res = json.loads(self.rec.Result())
+            self.heard = res.get("text", "")
+            for c in parse_result(res, self.min_conf, self.wake):
+                if c == "stop" and self._stop_sent:
+                    continue                 # already sent from the partial result
+                self._cmds.put(c)
+            self._stop_sent, self._stop_seen = False, 0
+        else:
+            part = json.loads(self.rec.PartialResult()).get("partial", "")
+            self._stop_seen = self._stop_seen + 1 if self._partial_stop(part) else 0
+            if not self._stop_sent and self._stop_seen >= self.stop_streak:
+                self._stop_sent = True       # react to "stop" without waiting for the pause after it
+                self.heard = part
+                self._cmds.put("stop")
+        if self.problem.startswith("voice error"):
+            self.problem = ""                # a good chunk after a bad one: healthy again
+
+    def check(self) -> str:
+        """Update and return `problem`. Called by poll(); safe to call any time."""
+        if not self._running:
+            return self.problem
+        now = self.clock()
+        if self._fatal or (self._thread is not None and not self._thread.is_alive()):
+            self.problem = self._fatal or "voice thread stopped"
+            return self.problem
+        silent = now - self._last_audio
+        if silent > self.STALL_S:
+            self.problem = f"mic silent {silent:.0f} s: check the mic / --mic"
+            if now >= self._next_retry:          # try to get the stream back without restarting the demo
+                self._next_retry = now + self.RETRY_S
+                try:
+                    self._open_stream()
+                except Exception as e:
+                    self.problem = f"mic failed: {e}"[:60]
+        elif self.problem.startswith(("mic silent", "mic failed")):
+            self.problem = ""
+        return self.problem
 
     def _partial_stop(self, partial: str) -> bool:
         """Does this partial text have a stop word (after the wake word, if one is required)?"""
@@ -179,6 +239,7 @@ class VoiceListener:
         return bool(toks) and any(w in STOP_WORDS for w in toks)
 
     def poll(self) -> list[str]:
+        self.check()
         out = []
         while True:
             try:
@@ -188,6 +249,8 @@ class VoiceListener:
 
     def close(self) -> None:
         self._running = False
+        if self._stream is None:
+            return
         try:
             self._stream.stop()
             self._stream.close()

@@ -76,7 +76,7 @@ def main():
         jt.max_speed *= a.speed
     arm = ArmController(link, joints, cfg=ArmConfig(mirror=False, pinch_claw=not a.no_pinch_claw))
     reader, tracker = GestureReader(), HandTracker(a.model)
-    voice, heard = None, ""
+    voice, heard, voice_problem = None, "", ""
     if a.voice:
         from james_gestures.voice import VoiceListener
         print("loading voice model (first run downloads ~40 MB)...")
@@ -110,6 +110,9 @@ def main():
                     ok = arm.voice(cmd)
                     heard = f"{cmd}" + ("" if ok else " (ignored)")
                     print("voice:", heard)
+                if voice.problem != voice_problem:         # say it once in the terminal when it changes
+                    voice_problem = voice.problem
+                    print("voice:", voice_problem or "working again")
             state = arm.update(g)
             if board and board.poll() and board.dropped:   # board rebooted or USB dropped: it is disarmed, so are we
                 board.dropped = False
@@ -152,7 +155,10 @@ def main():
             if g.ratios:
                 tune = "fingers " + " ".join(f"{r:.2f}" for r in g.ratios) + f"   gap {g.pinch_ratio:.2f}"
                 cv2.putText(frame, tune, (12, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (230, 230, 230), 1, cv2.LINE_AA)
-            if voice:
+            if voice and voice.problem:                    # voice is down: red, so nobody keeps shouting at it
+                cv2.putText(frame, f"VOICE DOWN: {voice.problem}", (12, 96), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
+                            (0, 0, 255), 2, cv2.LINE_AA)
+            elif voice:
                 cv2.putText(frame, f"voice: {heard or '...'}", (12, 96), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
                             (255, 210, 120), 1, cv2.LINE_AA)
             if board and board.lost:
