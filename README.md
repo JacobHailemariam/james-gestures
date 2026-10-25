@@ -121,7 +121,7 @@ From `firmware/arm_receiver_unoq/arm_receiver_unoq.ino`. The laptop's USB serial
 
 | Part | Wiring |
 |---|---|
-| Servos | PCA9685 16-channel PWM board on I2C at `0x40`, 50 Hz. Shoulder ch 4 (ANNIMOS RDS5160SG 60 kg, 6-8.4 V), elbow ch 0 and wrist ch 1 (ANNIMOS RDS3225SG 25 kg, 5-6.8 V), claw ch 15 (9 g). The ANNIMOS servos sweep 270 deg over 500..2500 us, the claw 180 deg; the firmware converts so that protocol degrees are real degrees with 90 = centre. Servo power from the PCA9685 V+ terminal (own supply), ground shared with the board |
+| Servos | PCA9685 16-channel PWM board on I2C at `0x40`, 50 Hz. Shoulder ch 4 (ANNIMOS RDS5160SG 60 kg, 6-8.4 V), elbow ch 0 and wrist ch 1 (ANNIMOS RDS3225SG 25 kg, 5-6.8 V), claw ch 14 (left jaw) and ch 15 (right jaw), two 9 g servos, the left one driven with the mirrored angle. The ANNIMOS servos sweep 270 deg over 500..2500 us, the claw 180 deg; the firmware converts so that protocol degrees are real degrees with 90 = centre. Servo power from the PCA9685 V+ terminal (own supply), ground shared with the board |
 | Base stepper | TB6600-style driver: PUL D9, DIR D3, ENA D4 (ENA HIGH = disabled). PUL-/DIR-/ENA- to GND. Driver set to 3200 pulses/rev (1/16) |
 | Claw | `CLAW_OPEN = 20`, `CLAW_CLOSED = 95` degrees, tune so closed grips without stalling |
 

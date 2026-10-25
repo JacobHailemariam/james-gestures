@@ -23,8 +23,11 @@
 #include <Adafruit_PWMServoDriver.h>
 
 // ---------- servo channels on the PCA9685 ----------
-const uint8_t CH_SHOULDER = 4, CH_ELBOW = 0, CH_WRIST = 1, CH_CLAW = 15;   // team-confirmed wiring: do not change
-const int CLAW_OPEN = 20, CLAW_CLOSED = 95;                // tune so CLOSED grips without stalling
+const uint8_t CH_SHOULDER = 4, CH_ELBOW = 0, CH_WRIST = 1;  // team-confirmed wiring: do not change
+const uint8_t CH_CLAW_L = 14, CH_CLAW_R = 15;              // two claw servos, one per jaw (left/right seen from above)
+const int CLAW_OPEN = 20, CLAW_CLOSED = 95;                // right jaw angles; tune so CLOSED grips without stalling
+const bool CLAW_L_MIRROR = true;                           // left jaw is the mirror image: it gets 180 - angle
+inline bool isClaw(uint8_t ch) { return ch == CH_CLAW_L || ch == CH_CLAW_R; }
 const int SERVO_US_MIN = 500, SERVO_US_MAX = 2500, SERVO_US_MID = 1500;
 const float US_PER_DEG_270 = 2000.0 / 270.0;               // ANNIMOS 60 kg / 25 kg: 7.41 us per real degree
 const float US_PER_DEG_180 = 2000.0 / 180.0;               // 9 g claw servo: 11.1 us per degree
@@ -77,7 +80,7 @@ void allServosOff() {                                      // no pulses: the joi
 
 void servoWrite(uint8_t ch, float deg) {                  // deg = real degrees, 90 = straight (after trim)
   deg += SERVO_TRIM_DEG[ch];
-  float perDeg = (ch == CH_CLAW) ? US_PER_DEG_180 : US_PER_DEG_270;
+  float perDeg = isClaw(ch) ? US_PER_DEG_180 : US_PER_DEG_270;
   long us = SERVO_US_MID + (long)((deg - 90) * perDeg + ((deg >= 90) ? 0.5f : -0.5f));
   pwm.writeMicroseconds(ch, constrain(us, (long)SERVO_US_MIN, (long)SERVO_US_MAX));
 }
@@ -85,7 +88,7 @@ void servoWrite(uint8_t ch, float deg) {                  // deg = real degrees,
 void servoDeg(uint8_t ch, int deg) {                      // sets the goal; loop() slews toward it
   if (!pcaOk) return;
   deg = constrain(deg, 0, 180);
-  if (ch == CH_CLAW) {                                    // the claw just goes
+  if (isClaw(ch)) {                                       // the claw just goes
     servoNow[ch] = deg; servoKnown[ch] = true;
     servoWrite(ch, deg);
   } else if (!servoKnown[ch]) {                            // first command on this channel: the servo's real
@@ -151,7 +154,12 @@ void handle(String cmd) {
   }
   if (!armed) return;                                      // everything below needs ARM 1
 
-  if (cmd.startsWith("CLAW ")) { servoDeg(CH_CLAW, cmd.endsWith("1") ? CLAW_CLOSED : CLAW_OPEN); return; }
+  if (cmd.startsWith("CLAW ")) {
+    int a = cmd.endsWith("1") ? CLAW_CLOSED : CLAW_OPEN;
+    servoDeg(CH_CLAW_R, a);
+    servoDeg(CH_CLAW_L, CLAW_L_MIRROR ? 180 - a : a);
+    return;
+  }
   if (cmd.startsWith("J ")) {
     int sp = cmd.indexOf(' ', 2);
     if (sp < 0) return;
