@@ -3,7 +3,7 @@
   python test_motors.py COM3
 
 Then type:
-  arm                 enable motion (servos snap to 90 on attach: have the arm near home first)
+  arm                 enable motion (servos get no pulse until the first move: use 'home' to bring them in)
   shoulder 100        move a joint (base | shoulder | elbow | wrist) to that many degrees
   shoulder +5         nudge it by 5 degrees (or -5)
   claw 1 / claw 0     close / open
