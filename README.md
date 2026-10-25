@@ -67,6 +67,11 @@ A fist is only a fist when every finger is folded, so a pinch with curled finger
 Offline, Vosk small English model. First run with `--voice` downloads it (about 40 MB) into `~/.cache/vosk`,
 or pass `--vosk-model <folder>` with the unzipped model. Needs `requirements-voice.txt` (vosk, sounddevice).
 
+**Say "james" first, then the word**: "james stop", "james grab", "james home". Without the wake word nothing
+happens. Measured in the Cal Hacks hall with nobody talking to the laptop: bare words gave 6.6 false commands
+per minute (noise came back as "release", "raise", "follow", "stop" with confidence 0.8-1.0); with the wake
+word the same 100 s of noise gave 0.
+
 | Say | Command | Also heard as |
 |---|---|---|
 | stop | STOP, works even when disarmed | freeze, halt |
@@ -80,8 +85,8 @@ or pass `--vosk-model <folder>` with the unzipped model. Needs `requirements-voi
 
 Voice can never ARM: that still needs the held open palm. A preset pauses hand steering until `follow`
 (or `f`), so the hand can't drag the arm off the pose, and it keeps playing even if the hand leaves view.
-The recogniser only knows these words; every word except stop needs a confident match, and stop is acted
-on mid-word. A voice `grab` is not undone by the next camera frame, and re-arming never opens the claw.
+The recogniser only knows these words plus "james"; every word except stop needs a confident match, and
+"james stop" is acted on mid-sentence once it has shown up in two consecutive partial results. A voice `grab` is not undone by the next camera frame, and re-arming never opens the claw.
 
 ## Safety built in
 

@@ -5,7 +5,7 @@ import numpy as np
 
 from james_gestures import ArmConfig, ArmController, GestureReader, PrintLink
 from james_gestures import handpose as HP
-from james_gestures.voice import parse, parse_result
+from james_gestures.voice import WAKE_WORDS, after_wake, parse, parse_result
 
 W, H = 640, 480
 
@@ -66,13 +66,56 @@ def test_stop_wins_over_everything():
     assert parse("FREEZE") == ["stop"]
 
 
+def vres(*pairs):
+    """('word', conf) pairs -> a Vosk final result dict."""
+    return {"text": " ".join(w for w, _ in pairs), "result": [{"word": w, "conf": c} for w, c in pairs]}
+
+
 def test_low_confidence_dropped_but_stop_kept():
-    res = {"text": "grab stop", "result": [{"word": "grab", "conf": 0.3}, {"word": "stop", "conf": 0.2}]}
-    assert parse_result(res) == ["stop"]
-    res = {"text": "grab", "result": [{"word": "grab", "conf": 0.3}]}
-    assert parse_result(res) == []
-    res = {"text": "grab", "result": [{"word": "grab", "conf": 0.95}]}
-    assert parse_result(res) == ["grab"]
+    assert parse_result(vres(("james", 1.0), ("grab", 0.3), ("stop", 0.2))) == ["stop"]
+    assert parse_result(vres(("james", 1.0), ("grab", 0.3))) == []
+    assert parse_result(vres(("james", 1.0), ("grab", 0.95))) == ["grab"]
+    # the old bare-word behaviour is still there with wake=None
+    assert parse_result(vres(("grab", 0.3), ("stop", 0.2)), wake=None) == ["stop"]
+    assert parse_result(vres(("grab", 0.95)), wake=None) == ["grab"]
+
+
+def test_no_wake_word_no_command():
+    # what the hall noise produced, verbatim from tools/eval_voice.py: must all be ignored
+    assert parse_result(vres(("let", 0.91), ("go", 0.91))) == []
+    assert parse_result(vres(("open", 0.44), ("release", 0.81), ("open", 0.62), ("go", 1.0))) == []
+    assert parse_result(vres(("[unk]", 0.85), ("open", 0.55), ("[unk]", 1.0), ("open", 0.8), ("up", 0.86))) == []
+    assert parse_result(vres(("[unk]", 1.0), ("home", 0.9), ("[unk]", 1.0))) == []
+    assert parse_result(vres(("stop", 1.0))) == []                        # even stop needs the wake word
+    assert parse_result({"text": "home"}) == []                           # text-only fallback too
+    assert parse_result({"text": "james home"}) == ["home"]
+
+
+def test_wake_word_must_be_confident():
+    assert parse_result(vres(("james", 0.5), ("grab", 1.0))) == []
+    assert parse_result(vres(("james", 0.6), ("grab", 1.0))) == ["grab"]
+    assert parse_result(vres(("[unk]", 1.0), ("james", 0.9), ("grab", 1.0), ("[unk]", 1.0))) == ["grab"]
+
+
+def test_command_must_follow_wake_word_closely():
+    assert WAKE_WORDS == ("james",)
+    assert parse_result(vres(("james", 1.0), ("let", 1.0), ("go", 1.0))) == ["release"]
+    assert parse_result(vres(("james", 1.0), ("[unk]", 1.0), ("grab", 1.0))) == ["grab"]
+    # a command 4+ words later is someone else's sentence, not an order
+    assert parse_result(vres(("james", 1.0), ("[unk]", 1.0), ("[unk]", 1.0), ("[unk]", 1.0), ("grab", 1.0))) == []
+    # the command before the wake word does not count either
+    assert parse_result(vres(("grab", 1.0), ("james", 1.0))) == []
+    # two commands in one breath still work when they fit in the window
+    assert parse_result(vres(("james", 1.0), ("grab", 1.0), ("release", 1.0))) == ["grab", "release"]
+
+
+def test_after_wake_on_partial_text():
+    # mirrors VoiceListener._partial_stop: the early stop only fires after the wake word
+    assert after_wake("stop".split(), WAKE_WORDS) is None
+    assert after_wake("[unk] open halt".split(), WAKE_WORDS) is None
+    assert after_wake("james stop".split(), WAKE_WORDS) == ["stop"]
+    assert after_wake("[unk] james [unk] stop".split(), WAKE_WORDS) == ["[unk]", "stop"]
+    assert after_wake("stop".split(), None) == ["stop"]
 
 
 # ---------- voice -> arm ----------
