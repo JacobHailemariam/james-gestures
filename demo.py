@@ -62,6 +62,7 @@ def main():
     ap.add_argument("--mic", type=int, help="microphone device number (default: system default)")
     ap.add_argument("--no-pinch-claw", action="store_true", help="claw only by voice, pinch does nothing")
     ap.add_argument("--sim", action="store_true", help="drive a MuJoCo model of the arm instead of the board")
+    ap.add_argument("--wrist", action="store_true", help="unlock the wrist joint (locked by default: the claw sits loosely on it)")
     ap.add_argument("--speed", type=float, default=1.0,
                     help="multiply every joint's max speed (deg/s) by this, e.g. 2 for a snappier sim")
     a = ap.parse_args()
@@ -74,7 +75,7 @@ def main():
     joints = default_joints()
     for jt in joints.values():
         jt.max_speed *= a.speed
-    arm = ArmController(link, joints, cfg=ArmConfig(mirror=False, pinch_claw=not a.no_pinch_claw))
+    arm = ArmController(link, joints, cfg=ArmConfig(mirror=False, pinch_claw=not a.no_pinch_claw, lock_wrist=not a.wrist))
     reader, tracker = GestureReader(), HandTracker(a.model)
     voice, heard = None, ""
     if a.voice:
@@ -127,7 +128,8 @@ def main():
             elif arm.active_joint:
                 hint = f"driving {arm.active_joint.upper()}  (un-point to stop)"
             else:
-                hint = "POINT: left/right=base up/down=shoulder · PEACE: left/right=wrist up/down=elbow · pinch=claw · fist=STOP"
+                peace = "PEACE: up/down=elbow" if arm.cfg.lock_wrist else "PEACE: left/right=wrist up/down=elbow"
+                hint = f"POINT: left/right=base up/down=shoulder · {peace} · pinch=claw · fist=STOP"
             cv2.putText(frame, hint, (12, h - 40), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 200, 200), 1, cv2.LINE_AA)
             if arm.active_joint:                                  # joystick bar: centre = zero, fill = speed
                 cx, cy, half = w // 2, h - 70, 120

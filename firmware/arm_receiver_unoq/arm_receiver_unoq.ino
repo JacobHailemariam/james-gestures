@@ -27,6 +27,8 @@ const uint8_t CH_SHOULDER = 4, CH_ELBOW = 0, CH_WRIST = 1;  // team-confirmed wi
 const uint8_t CH_CLAW_L = 14, CH_CLAW_R = 15;              // two claw servos, one per jaw (left/right seen from above)
 const int CLAW_OPEN = 20, CLAW_CLOSED = 95;                // right jaw angles; tune so CLOSED grips without stalling
 const bool CLAW_L_MIRROR = true;                           // left jaw is the mirror image: it gets 180 - angle
+const bool WRIST_LOCK = true;                              // claw sits loosely on the wrist: hold the wrist straight
+                                                           // (90 = 1500 us) and ignore every J wrist angle
 inline bool isClaw(uint8_t ch) { return ch == CH_CLAW_L || ch == CH_CLAW_R; }
 const int SERVO_US_MIN = 500, SERVO_US_MAX = 2500, SERVO_US_MID = 1500;
 const float US_PER_DEG_270 = 2000.0 / 270.0;               // ANNIMOS 60 kg / 25 kg: 7.41 us per real degree
@@ -171,7 +173,7 @@ void handle(String cmd) {
     }
     else if (joint == "shoulder") servoDeg(CH_SHOULDER, (int)deg);
     else if (joint == "elbow") servoDeg(CH_ELBOW, (int)deg);
-    else if (joint == "wrist") servoDeg(CH_WRIST, (int)deg);
+    else if (joint == "wrist") servoDeg(CH_WRIST, WRIST_LOCK ? 90 : (int)deg);
   }
 }
 
