@@ -76,7 +76,7 @@ def main():
         from james_gestures.voice import VoiceListener
         print("loading voice model (first run downloads ~40 MB)...")
         voice = VoiceListener(a.vosk_model, device=a.mic)
-        print("voice ready: say stop / grab / release / raise / reach / home / tuck / follow")
+        print("voice ready: say 'james' then a word: james stop / grab / release / raise / reach / home / tuck / follow")
     cap = cv2.VideoCapture(a.camera)
     if not cap.isOpened():
         raise SystemExit(f"camera {a.camera} not available")
