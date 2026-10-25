@@ -1,7 +1,89 @@
-# james-gestures: hand and voice control for the Cal Hacks arm
+<p align="center"><img src="media/hero.jpg" alt="Atlas: a gesture-controlled robotic arm worn on a backpack" width="100%"></p>
 
-A webcam watches one hand, an optional mic listens for a few words, and the code turns both into safe joint
-commands sent over USB serial to an Arduino UNO Q that drives the arm. The gesture stack is JAMES, vendored.
+<p align="center">
+<img alt="Cal Hacks 13.0" src="https://img.shields.io/badge/Cal%20Hacks-13.0-e8382b?style=flat-square&labelColor=17130f">
+<img alt="Hardware hack" src="https://img.shields.io/badge/track-hardware-5b58a6?style=flat-square&labelColor=17130f">
+<img alt="Python" src="https://img.shields.io/badge/python-3.10+-f4b42a?style=flat-square&labelColor=17130f">
+<img alt="MediaPipe" src="https://img.shields.io/badge/vision-MediaPipe-ff4f7b?style=flat-square&labelColor=17130f">
+<img alt="Arduino UNO Q" src="https://img.shields.io/badge/board-Arduino%20UNO%20Q-e8382b?style=flat-square&labelColor=17130f">
+<img alt="tests" src="https://img.shields.io/badge/tests-81%20passing-5b58a6?style=flat-square&labelColor=17130f">
+<img alt="MIT" src="https://img.shields.io/badge/license-MIT-f3ecdd?style=flat-square&labelColor=17130f">
+</p>
+
+<h3 align="center">Carrying the weight of the world? Atlas takes some of it off your shoulders.</h3>
+
+**Atlas** is an extra arm you wear on your back. A webcam watches your hand, and a few simple gestures steer
+the arm one joint at a time: point to turn and lift, make a peace sign to bend the elbow, pinch to close the
+claw, make a fist to stop everything. Say "james" and a word and it listens too. No joystick, no
+body-worn sensors, nothing to learn.
+
+We built it for people who need a hand they don't have: someone recovering from an injury or living with
+limited mobility, and anyone whose job asks their shoulders and back to lift all day.
+
+<p align="center"><img src="media/atlas-gestures.gif" alt="Gestures driving the arm: the real gesture reader and arm controller, fed synthetic hands" width="100%"></p>
+<p align="center"><sub>Rendered from the real <code>GestureReader</code> and <code>ArmController</code>, fed synthetic hands. Every number and every serial line on the right is what the code produced.</sub></p>
+
+## Drive it
+
+| You do | Atlas does |
+|:--|:--|
+| ✋ **Open palm**, held 1 s | Arms. It is also the "hold still" pose |
+| ☝️ **Point** and move your hand | Left / right turns the **base**, up / down lifts the **shoulder** |
+| ✌️ **Peace sign** and move | Up / down bends the **elbow** |
+| 🤏 **Pinch** / release | The **claw** closes / opens |
+| ✊ **Fist** | **STOP**: everything freezes and disarms |
+| 🗣️ "**james** home / raise / grab / stop" | Voice, offline. Nothing counts without the wake word |
+
+It works like a joystick, not a mirror: where you start pointing is zero, and how far you move from it sets
+the speed. A jittery hand can't snap a joint, because every target is clamped to its limits and speed-capped,
+and the board slews every servo at 60°/s on top of that.
+
+## The build
+
+<p align="center"><img src="media/build.jpg" alt="The arm, the claw, the backpack mount and the live gesture HUD" width="100%"></p>
+
+| Part | What we used |
+|:--|:--|
+| **Base** | NEMA 17 stepper on a TB6600 driver, turntable printed in PLA |
+| **Shoulder** | ANNIMOS RDS5160SG, 60 kg·cm servo (red link) |
+| **Elbow, wrist** | ANNIMOS RDS3225SG, 25 kg·cm servos (violet links) |
+| **Claw** | Two 9 g servos driving geared jaws (pink) |
+| **Brain** | Arduino UNO Q, PCA9685 16-channel PWM board |
+| **Mount** | A backpack, so the arm rides on your back |
+| **Design** | SolidWorks CAD, 3D printed; joint torque sized the motors and link lengths |
+| **Software** | Python, MediaPipe, OpenCV, Vosk, MuJoCo sim, JAMES gesture stack |
+
+<p align="center"><img src="media/how-it-works.jpg" alt="Webcam, JAMES gestures, arm controller, Arduino UNO Q, plus offline voice" width="100%"></p>
+
+## What we learned the hard way
+
+- **Our first design looked great and couldn't hold its motors.** We scrapped it and redesigned around the
+  real torques, then reprinted.
+- **Bare voice commands fail in a hackathon hall.** We measured 6.6 false commands a minute from crowd noise.
+  Requiring the wake word "james" took that to 0 in 100 seconds.
+- **Sending every camera frame to the board made the arm lag by seconds.** Capping joint updates at 10 per
+  second per joint fixed it.
+- **The board reset whenever the motors drew power.** The real fix is electrical (motors on their own supply),
+  and the software already notices a reboot, disarms the arm and reconnects by itself.
+
+## What's next
+
+EMG muscle-signal control, a proper back harness with onboard power, force sensing, lighter and stronger
+materials, and testing with physical therapists and real users.
+
+## Team
+
+| | |
+|:--|:--|
+| **Victor Espinoza** · UC Davis | Arm design, CAD, motors |
+| **Jacob Hailemariam** · University of Calgary | Embedded, firmware, control software |
+| **Semir Haji** · University of Calgary | Mechanical build, printing |
+| **Victor Isaac** · ACE Engineering College, Hyderabad (remote) | JAMES gesture system |
+
+---
+
+<details>
+<summary><b>Engineering notes</b>: how to run it, every flag, wiring, protocol, troubleshooting</summary>
 
 ```
 webcam -> MediaPipe (21 hand points) -> GestureReader -> ArmController -> serial -> arm_receiver_unoq.ino -> motors
@@ -185,6 +267,8 @@ PING -> PONG | ARM 1 | ARM 0 | STOP | J <base|shoulder|elbow|wrist> <deg> | CLAW
 - Firmware: `CLAW_OPEN` / `CLAW_CLOSED`, `STEPS_PER_DEG` (change if the base is geared), `STEP_US` (base speed).
 - If pinch is too touchy, raise `GestureConfig.pinch_ratio` in `gestures.py` (0.33 default; higher with gloves).
   The HUD prints the finger ratios and the thumb-index gap so you can see what it measures.
+
+</details>
 
 ---
 
