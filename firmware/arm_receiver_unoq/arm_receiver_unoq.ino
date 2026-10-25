@@ -33,6 +33,14 @@ const uint32_t PCA_OSC_HZ = 27000000;
 Adafruit_PWMServoDriver pwm(PCA_ADDR, Wire);
 bool pcaOk = false;
 
+// ---------- servo slew limit: no command from anywhere can snap a joint ----------
+const float SERVO_DEG_PER_S = 60.0;                        // arm joints move at most this fast
+const unsigned long SERVO_TICK_MS = 20;                    // one PCA9685 update per 50 Hz servo frame
+float servoNow[16], servoGoal[16];
+bool servoKnown[16];                                       // false until a channel's first command (that one snaps:
+                                                           // we don't know where the servo physically is)
+unsigned long lastServoTick = 0;
+
 // ---------- base stepper on the TB6600 ----------
 const int PIN_PUL = 9, PIN_DIR = 3, PIN_ENA = 4;
 const unsigned int PULSE_HIGH_US = 12;                     // driver needs >= 10 us HIGH
@@ -61,15 +69,40 @@ bool initPca() {
 
 void allServosOff() {                                      // no pulses: the joints go limp
   if (!pcaOk) return;
-  for (uint8_t ch = 0; ch < 16; ch++) pwm.setPWM(ch, 0, 4096);
+  for (uint8_t ch = 0; ch < 16; ch++) { pwm.setPWM(ch, 0, 4096); servoKnown[ch] = false; }
 }
 
-void servoDeg(uint8_t ch, int deg) {                      // deg = real degrees, 90 = servo centre
-  if (!pcaOk) return;
-  deg = constrain(deg, 0, 180);
+void servoWrite(uint8_t ch, float deg) {                  // deg = real degrees, 90 = servo centre
   float perDeg = (ch == CH_CLAW) ? US_PER_DEG_180 : US_PER_DEG_270;
   long us = SERVO_US_MID + (long)((deg - 90) * perDeg + ((deg >= 90) ? 0.5f : -0.5f));
   pwm.writeMicroseconds(ch, constrain(us, (long)SERVO_US_MIN, (long)SERVO_US_MAX));
+}
+
+void servoDeg(uint8_t ch, int deg) {                      // sets the goal; loop() slews toward it
+  if (!pcaOk) return;
+  deg = constrain(deg, 0, 180);
+  if (!servoKnown[ch] || ch == CH_CLAW) {                 // first command, or the claw: go straight there
+    servoNow[ch] = deg; servoKnown[ch] = true;
+    servoWrite(ch, deg);
+  }
+  servoGoal[ch] = deg;
+}
+
+void freezeServos() {                                     // STOP / ARM 0: stay where the slew got to
+  for (uint8_t ch = 0; ch < 16; ch++) servoGoal[ch] = servoNow[ch];
+}
+
+void tickServos() {
+  if (!pcaOk || millis() - lastServoTick < SERVO_TICK_MS) return;
+  lastServoTick = millis();
+  const float stepDeg = SERVO_DEG_PER_S * SERVO_TICK_MS / 1000.0;
+  for (uint8_t ch = 0; ch < 16; ch++) {
+    if (!servoKnown[ch] || servoNow[ch] == servoGoal[ch]) continue;
+    float d = servoGoal[ch] - servoNow[ch];
+    if (d > stepDeg) d = stepDeg; else if (d < -stepDeg) d = -stepDeg;
+    servoNow[ch] += d;
+    servoWrite(ch, servoNow[ch]);
+  }
 }
 
 void setup() {
@@ -93,6 +126,7 @@ void stepper(bool on) {                                   // enabling pulls hold
 void disarm(const char *why) {
   armed = false; baseGoal = baseNow;
   stepper(false);
+  freezeServos();
   // servos keep their last pulse so the arm holds its pose instead of dropping; cut power with the kill switch
   Monitor.print("OK "); Monitor.println(why);
 }
@@ -143,6 +177,7 @@ void loop() {
     lastPoll = millis();
     readCommands();
   }
+  tickServos();                                            // slew every servo toward its goal
   if (armed && baseNow == baseGoal) stepper(false);         // goal reached: release the holding current
   // one base step at a time, never blocking the command reader
   if (armed && baseNow != baseGoal && micros() - lastStep >= STEP_US) {
