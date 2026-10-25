@@ -40,6 +40,9 @@ float servoNow[16], servoGoal[16];
 bool servoKnown[16];                                       // false until a channel's first command (that one snaps:
                                                            // we don't know where the servo physically is)
 unsigned long lastServoTick = 0;
+// Per-channel trim, degrees, added to every command so that protocol 90 = the limb physically straight.
+// Calibrate with test_motors.py: arm, 'shoulder 90', nudge +5/-5 until straight, trim = final - 90.
+float SERVO_TRIM_DEG[16] = {0};                           // index = PCA9685 channel
 
 // ---------- base stepper on the TB6600 ----------
 const int PIN_PUL = 9, PIN_DIR = 3, PIN_ENA = 4;
@@ -72,7 +75,8 @@ void allServosOff() {                                      // no pulses: the joi
   for (uint8_t ch = 0; ch < 16; ch++) { pwm.setPWM(ch, 0, 4096); servoKnown[ch] = false; }
 }
 
-void servoWrite(uint8_t ch, float deg) {                  // deg = real degrees, 90 = servo centre
+void servoWrite(uint8_t ch, float deg) {                  // deg = real degrees, 90 = straight (after trim)
+  deg += SERVO_TRIM_DEG[ch];
   float perDeg = (ch == CH_CLAW) ? US_PER_DEG_180 : US_PER_DEG_270;
   long us = SERVO_US_MID + (long)((deg - 90) * perDeg + ((deg >= 90) ? 0.5f : -0.5f));
   pwm.writeMicroseconds(ch, constrain(us, (long)SERVO_US_MIN, (long)SERVO_US_MAX));
@@ -81,9 +85,12 @@ void servoWrite(uint8_t ch, float deg) {                  // deg = real degrees,
 void servoDeg(uint8_t ch, int deg) {                      // sets the goal; loop() slews toward it
   if (!pcaOk) return;
   deg = constrain(deg, 0, 180);
-  if (!servoKnown[ch] || ch == CH_CLAW) {                 // first command, or the claw: go straight there
+  if (ch == CH_CLAW) {                                    // the claw just goes
     servoNow[ch] = deg; servoKnown[ch] = true;
     servoWrite(ch, deg);
+  } else if (!servoKnown[ch]) {                            // first command on this channel: the servo's real
+    servoNow[ch] = 90; servoKnown[ch] = true;              // position is unknown, so the one unavoidable jump
+    servoWrite(ch, 90);                                    // is to straight (home); the rest of the move slews
   }
   servoGoal[ch] = deg;
 }
