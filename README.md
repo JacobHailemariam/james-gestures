@@ -82,6 +82,12 @@ word the same 100 s of noise gave 0.
 | home | preset: all joints to home | reset |
 | tuck | preset: shoulder 30, elbow 150 | rest, down |
 | follow | hand steers again after a preset | resume, move |
+| left shoulder, right shoulder, left hip, right hip | the four demo poses | |
+| save left shoulder (or any pose name) | stores the arm's current angles under that name in `poses.json`, which loads next time | |
+
+The four demo poses ship as placeholders (raise / tuck with the base turned 45 deg) and nobody has measured
+them on the real arm. Steer to the real pose in the sim, say "james save left shoulder", repeat for the other
+three, and commit `poses.json`.
 
 Voice needs no hand in the picture. If the arm is locked, "james home" (or any claw or preset word) arms it
 and goes; "james follow" alone does not. While a hand is driving, losing it for 2 s still disarms; armed by
