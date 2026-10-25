@@ -11,6 +11,8 @@ Needs: pip install mujoco
 from __future__ import annotations
 
 import math
+import sys
+import time
 from pathlib import Path
 
 MODEL = Path(__file__).resolve().parent.parent / "sim" / "arm.xml"
@@ -29,7 +31,12 @@ class SimLink:
         self.data = mujoco.MjData(self.model)
         self.armed = False
         self._base_rgba = self.model.geom_rgba.copy()
-        self.viewer = mujoco.viewer.launch_passive(self.model, self.data) if show else None
+        self._active: str | None = None
+        self.viewer = None
+        if show:                                # just the scene: no settings panels, angles overlaid in the corners
+            self.viewer = mujoco.viewer.launch_passive(self.model, self.data, show_left_ui=False, show_right_ui=False)
+            model_name = self.model.names.split(b"\0", 1)[0].decode()     # the window title is "MuJoCo : <name>"
+            _maximize_window(f"MuJoCo : {model_name}")
         self._claw(0)
         self._refresh()
 
@@ -63,13 +70,48 @@ class SimLink:
                 continue
             on = name == joint
             self.model.geom_rgba[gid] = (1.0, 0.95, 0.2, 1.0) if on else self._base_rgba[gid]
+        self._active = joint
         self._refresh()
+
+    def angles(self) -> dict[str, float]:
+        """Joint angles in the firmware's degrees (home: base 135, others 90), read back from the model."""
+        return {n: math.degrees(self.data.joint(n).qpos[0]) + HOME[n] for n in HOME}
+
+    def _overlay(self) -> None:
+        mj = self._mj
+        ang = self.angles()
+        claw = "closed" if self.data.joint("claw_r").qpos[0] > CLAW_CLOSED / 2 else "open"
+        names = "\n".join([*ang, "claw"])
+        values = "\n".join([*(f"{v:6.1f} deg" for v in ang.values()), claw])
+        state = "ARMED" if self.armed else "DISARMED"
+        driving = self._active.upper() if self._active else "-"
+        self.viewer.set_texts([
+            (mj.mjtFontScale.mjFONTSCALE_150, mj.mjtGridPos.mjGRID_TOPLEFT, names, values),
+            (mj.mjtFontScale.mjFONTSCALE_150, mj.mjtGridPos.mjGRID_TOPRIGHT, "state\ndriving", f"{state}\n{driving}"),
+        ])
 
     def _refresh(self) -> None:
         self._mj.mj_forward(self.model, self.data)
         if self.viewer is not None and self.viewer.is_running():
+            self._overlay()
             self.viewer.sync()
 
     def close(self) -> None:
         if self.viewer is not None:
             self.viewer.close()
+
+
+def _maximize_window(title: str, wait_s: float = 3.0) -> None:
+    """Maximize the viewer window (Windows only; elsewhere it opens at MuJoCo's default size)."""
+    if sys.platform != "win32":
+        return
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    deadline = time.monotonic() + wait_s
+    while time.monotonic() < deadline:          # the viewer thread may still be creating the window
+        hwnd = user32.FindWindowW(None, title)
+        if hwnd:
+            user32.ShowWindow(hwnd, 3)          # SW_MAXIMIZE
+            return
+        time.sleep(0.05)
