@@ -73,6 +73,9 @@ class ArmConfig:
     stick_full: float = 0.20      # ... and full speed at this offset
     mirror: bool = True           # webcam is mirrored: moving your hand right should turn the arm right
     pinch_claw: bool = True       # pinch closes / release opens the claw (set False to leave the claw to voice)
+    claw_release_ratio: float = 0.46  # open the claw only once the thumb-index gap is really above this
+                                  # (= GestureConfig.pinch_ratio * pinch_release). One noisy frame can
+                                  # un-confirm a held pinch; that must not drop what the claw is holding.
 
 
 class ArmController:
@@ -137,7 +140,10 @@ class ArmController:
             self._palm_since = None
 
         pinch_changed = g.pinch != self._last_pinch
-        self._last_pinch = g.pinch
+        if pinch_changed and not g.pinch and g.pinch_ratio is not None and g.pinch_ratio <= c.claw_release_ratio:
+            pinch_changed = False             # pinch lost to noise but the thumb is still on the finger: keep holding
+        else:
+            self._last_pinch = g.pinch
         if not self.armed:
             return self.state
 
