@@ -90,10 +90,18 @@ def main():
         raise SystemExit(f"camera {a.camera} not available")
     board = next((l for l in getattr(link, "links", [link]) if isinstance(l, SerialLink)), None)
     try:
+        misses = 0
         while True:
             ok, frame = cap.read()
-            if not ok:
-                break
+            if not ok:                            # a glitch: retry for ~2 s before giving up, and say why
+                misses += 1
+                if misses > 40:
+                    print(f"camera {a.camera} stopped delivering frames: in use by another program, privacy "
+                          f"shutter, or wrong index (try --camera 0/1/2)")
+                    break
+                cv2.waitKey(50)
+                continue
+            misses = 0
             frame = cv2.flip(frame, 1)            # mirror so it feels like a mirror
             h, w = frame.shape[:2]
             tr = tracker.process(frame)
@@ -107,6 +115,7 @@ def main():
             if board and board.poll() and board.dropped:   # board rebooted or USB dropped: it is disarmed, so are we
                 board.dropped = False
                 arm.stop()
+                arm.resync()                              # the rebooted board is back at home
                 print("board lost: check its power and USB; reconnecting...")
 
             for o in tr.others:
@@ -122,7 +131,7 @@ def main():
             if not arm.armed:
                 hint = "hold open palm to arm"
             elif not arm.steering:
-                hint = "preset playing · say 'follow' or press f to steer again · fist = STOP"
+                hint = "preset · hold OPEN PALM 1 s (or say 'james follow' / press f) to steer by hand · fist = STOP"
             elif arm.stick_gated:
                 hint = "move window over: show an open palm, then point again"
             elif arm.active_joint:
