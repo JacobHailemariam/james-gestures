@@ -112,7 +112,7 @@ From `firmware/arm_receiver_unoq/arm_receiver_unoq.ino`. The laptop's USB serial
 | Claw | `CLAW_OPEN = 20`, `CLAW_CLOSED = 95` degrees, tune so closed grips without stalling |
 
 Libraries needed on the board: Adafruit PWM Servo Driver, Adafruit BusIO, Arduino_RouterBridge.
-To flash from this folder: `.venv\Scripts\python.exe toolslash_unoq.py` (board on USB, App Lab installed once for its adb).
+To flash from this folder: `.venv\Scripts\python.exe tools\flash_unoq.py` (board on USB, App Lab installed once for its adb).
 Base step 0 is wherever the base was at power-on and is taken as 135 deg (`BASE_HOME_DEG`).
 
 ## Serial protocol
@@ -152,7 +152,7 @@ PING -> PONG | ARM 1 | ARM 0 | STOP | J <base|shoulder|elbow|wrist> <deg> | CLAW
 ## Troubleshooting
 
 - **No PONG** from `check_board.py` after the board lost power: the app on the UNO Q is not running.
-  Run `.venv\Scripts\python.exe toolslash_unoq.py --no-flash` (restarts the app over adb and PINGs),
+  Run `.venv\Scripts\python.exe tools\flash_unoq.py --no-flash` (restarts the app over adb and PINGs),
   or press Run in App Lab.
 - **The board reboots the moment `ARM 1` is sent**: power problem. Something on the arm is loading the board's
   supply. Give the TB6600 and the PCA9685 their own supplies and share only ground. The firmware now enables
