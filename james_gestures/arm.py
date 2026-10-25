@@ -103,6 +103,9 @@ class ArmConfig:
     lost_disarm_s: float = 2.0    # hand gone this long while armed -> disarm
     smooth: float = 0.25          # EMA factor on targets (0..1, lower = smoother, laggier)
     deadband_deg: float = 1.0     # don't resend a joint unless it moved this much
+    send_period_s: float = 0.1    # ... and at most this often per joint while it moves (the UNO Q reads the
+                                  # link byte by byte over an RPC, so 30 updates/s per joint backs it up for
+                                  # seconds). The firmware slews between updates. The final position is always sent.
     stick_dead: float = 0.04      # joystick: offset from the clutch point (fraction of frame) ignored below this
     stick_full: float = 0.20      # ... and full speed at this offset
     stick_lock_axis: bool = True  # once a move starts on one joint, a twitch on the other axis can't switch
@@ -131,6 +134,7 @@ class ArmController:
         self.pos = {n: jt.home for n, jt in self.j.items()}       # where we told the arm to be
         self.target = dict(self.pos)
         self._sent = {}
+        self._sent_t = {}                 # clock of the last send per joint
         self._claw = None                 # last claw state sent (None = never sent)
         self._last_pinch = False          # claw follows pinch CHANGES, so a voice "grab" isn't undone next frame
         self.steering = True              # False while a preset plays: the hand stops aiming the arm
@@ -314,9 +318,16 @@ class ArmController:
             lim = jt.max_speed * dt
             self.pos[n] = jt.clamp(self.pos[n] + max(-lim, min(lim, err)))
             last = self._sent.get(n)
-            if last is None or abs(self.pos[n] - last) >= self.cfg.deadband_deg:
+            moved = last is None or abs(self.pos[n] - last) >= self.cfg.deadband_deg
+            if not moved:
+                continue
+            now = self.clock()
+            due = last is None or now - self._sent_t.get(n, -1e9) >= self.cfg.send_period_s
+            arrived = self.pos[n] == self.target[n]           # final value: never leave the arm short of it
+            if due or arrived:
                 self.link.send(f"J {n} {self.pos[n]:.1f}")
                 self._sent[n] = self.pos[n]
+                self._sent_t[n] = now
 
     def _disarm(self, why: str, stopped: bool = False) -> None:
         if self.armed and not stopped:
