@@ -62,7 +62,6 @@ def main():
     ap.add_argument("--mic", type=int, help="microphone device number (default: system default)")
     ap.add_argument("--no-pinch-claw", action="store_true", help="claw only by voice, pinch does nothing")
     ap.add_argument("--sim", action="store_true", help="drive a MuJoCo model of the arm instead of the board")
-    ap.add_argument("--wrist", action="store_true", help="unlock the wrist joint (locked by default: the claw sits loosely on it)")
     ap.add_argument("--speed", type=float, default=1.0,
                     help="multiply every joint's max speed (deg/s) by this, e.g. 2 for a snappier sim")
     a = ap.parse_args()
@@ -75,14 +74,14 @@ def main():
     joints = default_joints()
     for jt in joints.values():
         jt.max_speed *= a.speed
-    arm = ArmController(link, joints, cfg=ArmConfig(mirror=False, pinch_claw=not a.no_pinch_claw, lock_wrist=not a.wrist))
+    arm = ArmController(link, joints, cfg=ArmConfig(mirror=False, pinch_claw=not a.no_pinch_claw))
     reader, tracker = GestureReader(), HandTracker(a.model)
     voice, heard = None, ""
     if a.voice:
         from james_gestures.voice import VoiceListener
         print("loading voice model (first run downloads ~40 MB)...")
         voice = VoiceListener(a.vosk_model, device=a.mic)
-        print("voice ready: say 'james' then a word: james stop / grab / release / raise / reach / home / straight / tuck / follow")
+        print("voice ready: say 'james' then a word: james stop / grab / release / raise / reach / home / tuck / follow")
         print("             poses: james left shoulder / right shoulder / left hip / right hip")
         print("             james save left shoulder   (stores the current angles in poses.json)")
     cap = cv2.VideoCapture(a.camera)
@@ -90,18 +89,10 @@ def main():
         raise SystemExit(f"camera {a.camera} not available")
     board = next((l for l in getattr(link, "links", [link]) if isinstance(l, SerialLink)), None)
     try:
-        misses = 0
         while True:
             ok, frame = cap.read()
-            if not ok:                            # a glitch: retry for ~2 s before giving up, and say why
-                misses += 1
-                if misses > 40:
-                    print(f"camera {a.camera} stopped delivering frames: in use by another program, privacy "
-                          f"shutter, or wrong index (try --camera 0/1/2)")
-                    break
-                cv2.waitKey(50)
-                continue
-            misses = 0
+            if not ok:
+                break
             frame = cv2.flip(frame, 1)            # mirror so it feels like a mirror
             h, w = frame.shape[:2]
             tr = tracker.process(frame)
@@ -115,7 +106,6 @@ def main():
             if board and board.poll() and board.dropped:   # board rebooted or USB dropped: it is disarmed, so are we
                 board.dropped = False
                 arm.stop()
-                arm.resync()                              # the rebooted board is back at home
                 print("board lost: check its power and USB; reconnecting...")
 
             for o in tr.others:
@@ -131,14 +121,13 @@ def main():
             if not arm.armed:
                 hint = "hold open palm to arm"
             elif not arm.steering:
-                hint = "preset · hold OPEN PALM 1 s (or say 'james follow' / press f) to steer by hand · fist = STOP"
+                hint = "preset playing · say 'follow' or press f to steer again · fist = STOP"
             elif arm.stick_gated:
                 hint = "move window over: show an open palm, then point again"
             elif arm.active_joint:
                 hint = f"driving {arm.active_joint.upper()}  (un-point to stop)"
             else:
-                peace = "PEACE: up/down=elbow" if arm.cfg.lock_wrist else "PEACE: left/right=wrist up/down=elbow"
-                hint = f"POINT: left/right=base up/down=shoulder · {peace} · pinch=claw · fist=STOP"
+                hint = "POINT: left/right=base up/down=shoulder · PEACE: left/right=wrist up/down=elbow · pinch=claw · fist=STOP"
             cv2.putText(frame, hint, (12, h - 40), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 200, 200), 1, cv2.LINE_AA)
             if arm.active_joint:                                  # joystick bar: centre = zero, fill = speed
                 cx, cy, half = w // 2, h - 70, 120

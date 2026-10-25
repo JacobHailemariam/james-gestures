@@ -42,14 +42,13 @@ WORDS = {
     "release": "release", "open": "release", "drop": "release", "let go": "release",
     "raise": "raise", "lift": "raise", "up": "raise",
     "reach": "reach", "forward": "reach",
-    "home": "home", "reset": "home", "park": "home",
-    "straight": "straight", "extend": "straight",
+    "home": "home", "reset": "home",
     "tuck": "tuck", "rest": "tuck", "down": "tuck",
     "follow": "follow", "resume": "follow", "move": "follow",
     "left shoulder": "left shoulder", "right shoulder": "right shoulder",     # named poses (arm.py PRESETS)
     "left hip": "left hip", "right hip": "right hip",
 }
-POSES = ("home", "straight", "raise", "reach", "tuck", "left shoulder", "right shoulder", "left hip", "right hip")
+POSES = ("home", "raise", "reach", "tuck", "left shoulder", "right shoulder", "left hip", "right hip")
 SAVE_WORD = "save"           # "james save left shoulder": store the current angles under that name
 STOP_WORDS = {w for w, c in WORDS.items() if c == "stop"}
 WAKE_WORDS = ("james",)      # must be in the Vosk model's vocabulary (it warns and drops the word otherwise)

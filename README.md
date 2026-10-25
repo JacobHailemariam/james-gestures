@@ -52,7 +52,7 @@ where you start pointing is the zero, and how far your fingertip is from that ze
 | Open palm, held 1 s | **ARM**: motion enabled (also the idle pose: nothing moves) |
 | Fist, held 0.3 s | **STOP**: freeze and disarm (soft kill switch) |
 | **Point** (1 finger) and move | left/right = **base**, up/down = **shoulder** |
-| **Peace** (2 fingers) and move | up/down = **elbow** (left/right = wrist only with `--wrist`; the wrist is locked straight by default because the claw sits loosely on it) |
+| **Peace** (2 fingers) and move | left/right = **wrist**, up/down = **elbow** |
 | Un-point (back to open palm) | that joint stops; pointing again sets a new zero |
 | Pinch / release | claw close / open |
 | Hand leaves camera | holds still, disarms after 2 s |
@@ -79,8 +79,7 @@ word the same 100 s of noise gave 0.
 | release | claw opens | open, drop, let go |
 | raise | preset: shoulder 150, elbow 120 | lift, up |
 | reach | preset: shoulder 110, elbow 40 | forward |
-| home | preset: every joint at 90, i.e. 1500 us on every servo, arm straight | reset, park |
-| straight | the same straight pose | extend |
+| home | preset: all joints to home | reset |
 | tuck | preset: shoulder 30, elbow 150 | rest, down |
 | follow | hand steers again after a preset | resume, move |
 | left shoulder, right shoulder, left hip, right hip | the four demo poses | |
@@ -121,7 +120,7 @@ From `firmware/arm_receiver_unoq/arm_receiver_unoq.ino`. The laptop's USB serial
 
 | Part | Wiring |
 |---|---|
-| Servos | PCA9685 16-channel PWM board on I2C at `0x40`, 50 Hz. Shoulder ch 4 (ANNIMOS RDS5160SG 60 kg, 6-8.4 V), elbow ch 0 and wrist ch 1 (ANNIMOS RDS3225SG 25 kg, 5-6.8 V), claw ch 14 (left jaw) and ch 15 (right jaw), two 9 g servos, the left one driven with the mirrored angle. The ANNIMOS servos sweep 270 deg over 500..2500 us, the claw 180 deg; the firmware converts so that protocol degrees are real degrees with 90 = centre. Servo power from the PCA9685 V+ terminal (own supply), ground shared with the board |
+| Servos | PCA9685 16-channel PWM board on I2C at `0x40`, 50 Hz. Shoulder ch 4 (ANNIMOS RDS5160SG 60 kg, 6-8.4 V), elbow ch 0 and wrist ch 1 (ANNIMOS RDS3225SG 25 kg, 5-6.8 V), claw ch 15 (9 g). The ANNIMOS servos sweep 270 deg over 500..2500 us, the claw 180 deg; the firmware converts so that protocol degrees are real degrees with 90 = centre. Servo power from the PCA9685 V+ terminal (own supply), ground shared with the board |
 | Base stepper | TB6600-style driver: PUL D9, DIR D3, ENA D4 (ENA HIGH = disabled). PUL-/DIR-/ENA- to GND. Driver set to 3200 pulses/rev (1/16) |
 | Claw | `CLAW_OPEN = 20`, `CLAW_CLOSED = 95` degrees, tune so closed grips without stalling |
 
