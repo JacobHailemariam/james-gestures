@@ -18,7 +18,7 @@ import argparse
 
 import cv2
 
-from james_gestures import ArmConfig, ArmController, GestureReader, PrintLink, SerialLink
+from james_gestures import ArmConfig, ArmController, GestureReader, PrintLink, SerialLink, default_joints
 from james_gestures.tracker import HandTracker
 
 LINKS = [(0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8), (5, 9), (9, 10), (10, 11), (11, 12),
@@ -62,6 +62,8 @@ def main():
     ap.add_argument("--mic", type=int, help="microphone device number (default: system default)")
     ap.add_argument("--no-pinch-claw", action="store_true", help="claw only by voice, pinch does nothing")
     ap.add_argument("--sim", action="store_true", help="drive a MuJoCo model of the arm instead of the board")
+    ap.add_argument("--speed", type=float, default=1.0,
+                    help="multiply every joint's max speed (deg/s) by this, e.g. 2 for a snappier sim")
     a = ap.parse_args()
 
     link = SerialLink(a.port, a.baud) if a.port else PrintLink()
@@ -69,7 +71,10 @@ def main():
         from james_gestures.sim import SimLink
         link = TeeLink(SimLink(), link)
     # the frame is flipped below, so the controller must not mirror it a second time
-    arm = ArmController(link, cfg=ArmConfig(mirror=False, pinch_claw=not a.no_pinch_claw))
+    joints = default_joints()
+    for jt in joints.values():
+        jt.max_speed *= a.speed
+    arm = ArmController(link, joints, cfg=ArmConfig(mirror=False, pinch_claw=not a.no_pinch_claw))
     reader, tracker = GestureReader(), HandTracker(a.model)
     voice, heard = None, ""
     if a.voice:
@@ -124,7 +129,8 @@ def main():
                 cx, cy, half = w // 2, h - 70, 120
                 cv2.rectangle(frame, (cx - half, cy - 8), (cx + half, cy + 8), (80, 80, 80), 1)
                 cv2.rectangle(frame, (cx, cy - 7), (cx + int(arm.drive * half), cy + 7), (60, 220, 255), -1)
-                cv2.putText(frame, arm.active_joint.upper(), (cx - 30, cy - 14), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                degs = arm.drive * arm.j[arm.active_joint].max_speed
+                cv2.putText(frame, f"{arm.active_joint.upper()} {degs:+.0f} deg/s", (cx - 70, cy - 14), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                             (60, 220, 255), 2, cv2.LINE_AA)
             sim = next((l for l in getattr(link, "links", [link]) if hasattr(l, "highlight")), None)
             if sim:
