@@ -8,7 +8,7 @@ Then type:
   shoulder +5         nudge it by 5 degrees (or -5)
   speed 0.5           scale the move speed (1 = the joint's max_speed from arm.py, default 0.5)
   claw 1 / claw 0     close / open
-  home                all joints to home (base 135, others 90)
+  home                all joints to 90 / base 135 (every servo at 1500 us: the 'straight' pose)
   stop                freeze and disarm (also Ctrl+C / closing the window)
   quit
 

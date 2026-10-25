@@ -79,7 +79,8 @@ word the same 100 s of noise gave 0.
 | release | claw opens | open, drop, let go |
 | raise | preset: shoulder 150, elbow 120 | lift, up |
 | reach | preset: shoulder 110, elbow 40 | forward |
-| home | preset: all joints to home | reset |
+| home | preset: park, folded back against the bag (shoulder 30, elbow 150) | reset, park |
+| straight | preset: every joint at 90, i.e. 1500 us on every servo, arm straight | extend |
 | tuck | preset: shoulder 30, elbow 150 | rest, down |
 | follow | hand steers again after a preset | resume, move |
 | left shoulder, right shoulder, left hip, right hip | the four demo poses | |
