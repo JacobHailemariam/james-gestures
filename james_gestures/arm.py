@@ -61,16 +61,17 @@ PRESETS = {
     "raise": {"shoulder": 150, "elbow": 120},
     "reach": {"shoulder": 110, "elbow": 40},
     "tuck": {"shoulder": 30, "elbow": 150},
-    # The four demo poses, solved by tools/solve_poses.py from the backpack geometry in sim/arm.xml (bag
-    # 245 x 420 x 50, plate centre (155, 268)). "Left" = the wearer's left. Fingertip targets, mm, in the
-    # bag frame: shoulders (215|30, -60, 600) = above the shoulder just in front of the back face; hips
-    # (430|-180, -50, 150) = beside the hip, 185 mm outside the bag. The joints only fold +-70 deg, so the
-    # claw can come at most ~70 mm in front of the back face. Re-run the solver after changing the targets,
-    # or overwrite any pose live with "james save <name>" (poses.json wins over these).
-    "left shoulder": {"base": 55.2, "shoulder": 156.1, "elbow": 148.5, "wrist": 130.7},
-    "right shoulder": {"base": 24.4, "shoulder": 159.6, "elbow": 142.2, "wrist": 130.3},
-    "left hip": {"base": 158.2, "shoulder": 148.2, "elbow": 158.9, "wrist": 136.1},
-    "right hip": {"base": 115.6, "shoulder": 25.5, "elbow": 29.5, "wrist": 57.2},
+    # The four demo poses, solved by tools/solve_poses.py against sim/arm.xml, whose arm dimensions come from
+    # cad/assembly.step (shoulder->elbow 259, elbow->wrist 247, wrist->fingertips 249 mm, WITH the wrist link).
+    # Fingertip targets, mm, in the bag frame (x across the back seen from behind, y out of the back, z up):
+    # shoulders (215|30, -130, 560) = above the shoulder, 130 mm in front of the back face; hips
+    # (380|-135, -120, 150) = beside the hip, 120 mm forward. "Left" = the wearer's left. All four use the
+    # wrist: if the wrist link is not on the arm, re-solve with --no-wrist after shortening the hand in arm.xml.
+    # Overwrite any pose live with "james save <name>" (poses.json wins over these).
+    "left shoulder": {"base": 236.6, "shoulder": 30.2, "elbow": 20.6, "wrist": 27.0},
+    "right shoulder": {"base": 21.8, "shoulder": 156.3, "elbow": 160.0, "wrist": 172.3},
+    "left hip": {"base": 162.7, "shoulder": 160.0, "elbow": 160.0, "wrist": 180.0},
+    "right hip": {"base": 112.9, "shoulder": 22.6, "elbow": 38.0, "wrist": 11.6},
 }
 POSES_FILE = "poses.json"      # user-saved poses, {name: {joint: deg}}; loaded over PRESETS by ArmController
 
