@@ -191,8 +191,11 @@ class ArmController:
         if not self.armed and self._palm_since is not None and now - self._palm_since >= c.arm_hold_s:
             self._arm()
             self._palm_ref = g.palm_px or None
-        elif self.armed and not self.steering and self._palm_since is not None and now - self._palm_since >= c.arm_hold_s:
-            self.follow()                         # palm held 1 s after a preset: the hand steers again
+        elif (self.armed and not self.steering and self.preset_arrived()
+              and self._palm_since is not None and now - self._palm_since >= c.arm_hold_s):
+            # palm held 1 s once the preset has arrived: the hand steers again. Waiting for arrival matters
+            # because open palm is also the idle pose; without it a resting palm aborted the preset mid-move.
+            self.follow()
             self._palm_since = None
 
         pinch_changed = g.pinch != self._last_pinch
@@ -260,6 +263,10 @@ class ArmController:
         if cmd == "follow":
             return self.follow()
         return self.goto_preset(cmd)
+
+    def preset_arrived(self) -> bool:
+        """True once every joint has reached the target a preset set."""
+        return all(abs(self.pos[n] - self.target[n]) < 1e-6 for n in self.j)
 
     def resync(self) -> None:
         """The board rebooted: it is back at power-on state (home, nothing sent). Forget what we told it."""

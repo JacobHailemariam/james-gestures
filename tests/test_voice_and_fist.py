@@ -155,6 +155,24 @@ def test_open_palm_takes_steering_back_after_a_preset():
     assert arm.steering and arm.armed
 
 
+def test_idle_open_palm_does_not_abort_a_preset():
+    # open palm is also the idle pose: someone resting a palm while saying "james raise" must still get the pose
+    r, arm, link, clock = rig()
+    feed(r, arm, clock, "open", 1.5)                        # armed, palm stays up
+    assert arm.voice("raise")
+    feed(r, arm, clock, "open", 3.0)                        # palm never drops during or after the preset
+    assert abs(arm.pos["shoulder"] - 150) < 1e-6 and abs(arm.pos["elbow"] - 120) < 1e-6
+    assert arm.steering                                     # ... and once it arrived, the palm took steering back
+
+
+def test_palm_takeback_waits_for_the_preset_to_arrive():
+    r, arm, link, clock = rig()
+    feed(r, arm, clock, "open", 1.5)
+    arm.voice("raise")
+    feed(r, arm, clock, "open", 0.6)                        # shoulder needs ~1.3 s at 45 deg/s: still on its way
+    assert not arm.steering and arm.pos["shoulder"] < 150
+
+
 def test_preset_keeps_playing_without_a_hand():
     r, arm, link, clock = rig()
     feed(r, arm, clock, "open", 1.5)
