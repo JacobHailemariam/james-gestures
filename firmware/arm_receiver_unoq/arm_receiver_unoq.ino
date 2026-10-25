@@ -1,7 +1,9 @@
 // arm_receiver_unoq.ino: receives james-gestures commands and drives the arm, on the Arduino UNO Q.
 //
 // Hardware (matches bringup_unoq.ino, which found it all working):
-//   servos:  PCA9685 16-channel PWM board on I2C (0x40), channels below. 50 Hz, 500..2500 us = 0..180 deg.
+//   servos:  PCA9685 16-channel PWM board on I2C (0x40), channels below, 50 Hz. ANNIMOS RDS5160SG (60 kg,
+//            shoulder) and RDS3225SG (25 kg, elbow/wrist) sweep 270 deg over 500..2500 us; the 9 g claw servo
+//            sweeps 180 deg over the same pulses. Protocol degrees are REAL degrees with 90 = centre (1500 us).
 //            Servos powered from the PCA9685's V+ terminal (own 5-6 V supply), ground shared with the board.
 //   base:    stepper on a TB6600-style driver: PUL D9, DIR D3, ENA D4 (ENA HIGH = disabled).
 //            PUL-/DIR-/ENA- to GND. Driver set to 3200 pulses/rev (1/16).
@@ -23,7 +25,9 @@
 // ---------- servo channels on the PCA9685 ----------
 const uint8_t CH_SHOULDER = 4, CH_ELBOW = 0, CH_WRIST = 1, CH_CLAW = 15;   // team-confirmed wiring: do not change
 const int CLAW_OPEN = 20, CLAW_CLOSED = 95;                // tune so CLOSED grips without stalling
-const int SERVO_US_MIN = 500, SERVO_US_MAX = 2500;         // 0..180 degrees
+const int SERVO_US_MIN = 500, SERVO_US_MAX = 2500, SERVO_US_MID = 1500;
+const float US_PER_DEG_270 = 2000.0 / 270.0;               // ANNIMOS 60 kg / 25 kg: 7.41 us per real degree
+const float US_PER_DEG_180 = 2000.0 / 180.0;               // 9 g claw servo: 11.1 us per degree
 const uint8_t PCA_ADDR = 0x40;
 const uint32_t PCA_OSC_HZ = 27000000;
 Adafruit_PWMServoDriver pwm(PCA_ADDR, Wire);
@@ -60,10 +64,12 @@ void allServosOff() {                                      // no pulses: the joi
   for (uint8_t ch = 0; ch < 16; ch++) pwm.setPWM(ch, 0, 4096);
 }
 
-void servoDeg(uint8_t ch, int deg) {
+void servoDeg(uint8_t ch, int deg) {                      // deg = real degrees, 90 = servo centre
   if (!pcaOk) return;
   deg = constrain(deg, 0, 180);
-  pwm.writeMicroseconds(ch, SERVO_US_MIN + (long)(SERVO_US_MAX - SERVO_US_MIN) * deg / 180);
+  float perDeg = (ch == CH_CLAW) ? US_PER_DEG_180 : US_PER_DEG_270;
+  long us = SERVO_US_MID + (long)((deg - 90) * perDeg + ((deg >= 90) ? 0.5f : -0.5f));
+  pwm.writeMicroseconds(ch, constrain(us, (long)SERVO_US_MIN, (long)SERVO_US_MAX));
 }
 
 void setup() {
