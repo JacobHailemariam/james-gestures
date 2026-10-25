@@ -47,7 +47,7 @@ class Joint:
 def default_joints() -> dict[str, Joint]:
     # base capped at 270 deg so the cables can't wrap; tune lo/hi/home on the real arm
     return {
-        "base": Joint("base", 0, 270, 135, 45),
+        "base": Joint("base", 0, 270, 135, 90),      # 45 felt slow in the sim; stepper can do ~110 at STEP_US=1000
         "shoulder": Joint("shoulder", 20, 160, 90, 45),
         "elbow": Joint("elbow", 20, 160, 90, 60),
         "wrist": Joint("wrist", 0, 180, 90, 90),
