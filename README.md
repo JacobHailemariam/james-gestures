@@ -38,6 +38,9 @@ The port is `/dev/tty.usbmodemXXXX` on Mac, usually `/dev/ttyACM0` on Linux.
 | `--mic 2` | microphone device number (default: system default) |
 | `--no-pinch-claw` | pinch does nothing; the claw is voice-only |
 | `--sim` | drive a MuJoCo model of the arm (`pip install mujoco`). With `--port` too, the sim shows what the real arm was told |
+| `--speed 2` | multiply every joint's max speed |
+| `--min-hand 0.05` | hands smaller than this fraction of the frame height (people in the background) never drive; 0 = off |
+| `--log hands.csv` | record finger ratios per frame; keys 1-5 label the gesture you hold. Summarise with `tools/tune_hands.py hands.csv` |
 
 Keys in the demo window: `q` quit, `space` STOP, `h` `r` `e` `t` presets home / raise / reach / tuck,
 `f` follow (hand steers again after a preset).

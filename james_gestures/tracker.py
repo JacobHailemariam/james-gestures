@@ -31,9 +31,21 @@ def largest(hands: list[list[Point]]) -> int | None:
     return max(range(len(hands)), key=lambda i: math.dist(hands[i][0], hands[i][9]))
 
 
+def pick_driver(hands: list[list[Point]], frame_h: int, min_palm_frac: float = 0.05) -> int | None:
+    """The hand allowed to drive: the largest one, and only if it is near enough to be the operator's.
+    A hand whose wrist-to-middle-knuckle length is under `min_palm_frac` of the frame height is someone in
+    the background (laptop webcam: about 0.16 of the frame height at 60 cm, 0.06 at 1.5 m, under 0.05 beyond ~2 m).
+    Without this, a passer-by's hand took over the moment the operator's hand left the picture."""
+    i = largest(hands)
+    if i is None or math.dist(hands[i][0], hands[i][9]) < min_palm_frac * frame_h:
+        return None
+    return i
+
+
 class HandTracker:
     def __init__(self, model_path: str | Path = "hand_landmarker.task", max_hands: int = 2,
-                 det_conf: float = 0.5, track_conf: float = 0.5):
+                 det_conf: float = 0.5, track_conf: float = 0.5, min_palm_frac: float = 0.05):
+        self.min_palm_frac = min_palm_frac
         import mediapipe as mp
         from mediapipe.tasks import python as mpt
         from mediapipe.tasks.python import vision
@@ -60,9 +72,9 @@ class HandTracker:
         out = self._lm.detect_for_video(self._mp.Image(image_format=self._mp.ImageFormat.SRGB, data=rgb), ts)
         hands = [[(p.x * w, p.y * h) for p in lm] for lm in (out.hand_landmarks or [])]
         handed = [(hd[0].category_name if hd else "") for hd in (out.handedness or [])]
-        i = largest(hands)
-        if i is None:
-            return TrackResult()
+        i = pick_driver(hands, h, self.min_palm_frac)
+        if i is None:                              # nobody near enough: every hand is drawn faded, none drives
+            return TrackResult(others=hands)
         return TrackResult(hands[i], handed[i] if i < len(handed) else "",
                            [hd for j, hd in enumerate(hands) if j != i])
 
