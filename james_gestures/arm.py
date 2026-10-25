@@ -63,17 +63,16 @@ PRESETS = {
     "raise": {"shoulder": 150, "elbow": 120},
     "reach": {"shoulder": 110, "elbow": 40},
     "tuck": {"shoulder": 30, "elbow": 150},
-    # The four demo poses, solved by tools/solve_poses.py against sim/arm.xml, whose arm dimensions come from
-    # cad/assembly.step (shoulder->elbow 259, elbow->wrist 247, wrist->fingertips 249 mm, WITH the wrist link).
-    # Fingertip targets, mm, in the bag frame (x across the back seen from behind, y out of the back, z up):
-    # shoulders (215|30, -130, 560) = above the shoulder, 130 mm in front of the back face; hips
-    # (380|-135, -120, 150) = beside the hip, 120 mm forward. "Left" = the wearer's left. All four use the
-    # wrist: if the wrist link is not on the arm, re-solve with --no-wrist after shortening the hand in arm.xml.
-    # Overwrite any pose live with "james save <name>" (poses.json wins over these).
-    "left shoulder": {"base": 236.6, "shoulder": 30.2, "elbow": 20.6, "wrist": 27.0},
-    "right shoulder": {"base": 21.8, "shoulder": 156.3, "elbow": 160.0, "wrist": 172.3},
-    "left hip": {"base": 162.7, "shoulder": 160.0, "elbow": 160.0, "wrist": 180.0},
-    "right hip": {"base": 112.9, "shoulder": 22.6, "elbow": 38.0, "wrist": 11.6},
+    # The four demo poses, for the WRIST LOCKED straight (lock_wrist / firmware WRIST_LOCK). With the wrist fixed
+    # the fingertip can never come closer than ~630 mm to the shoulder, so each pose is the arm fully folded
+    # (shoulder 20, elbow 20) and pointed by the base: "up" is base ~221, "down" ~41 in sim/arm.xml's frame.
+    # Fingertips (mm, bag frame): left shoulder ~(330,-150,740), right ~(-20,-150,740), left hip ~(500,-150,-90),
+    # right hip ~(-135,-150,-135). "Left" = the wearer's left. Re-solve with tools/solve_poses.py (no --no-wrist)
+    # once the claw is bolted down and the wrist can move. "james save <name>" overrides any of these.
+    "left shoulder": {"base": 241, "shoulder": 20, "elbow": 20, "wrist": 90},
+    "right shoulder": {"base": 201, "shoulder": 20, "elbow": 20, "wrist": 90},
+    "left hip": {"base": 1, "shoulder": 20, "elbow": 20, "wrist": 90},
+    "right hip": {"base": 81, "shoulder": 20, "elbow": 20, "wrist": 90},
 }
 POSES_FILE = "poses.json"      # user-saved poses, {name: {joint: deg}}; loaded over PRESETS by ArmController
 
@@ -114,6 +113,8 @@ class ArmConfig:
     mirror: bool = True           # webcam is mirrored: moving your hand right should turn the arm right
     pinch_claw: bool = True       # pinch closes / release opens the claw (set False to leave the claw to voice)
     poses_file: str | None = POSES_FILE  # saved poses ("james save left shoulder"); None = do not load or save
+    lock_wrist: bool = True       # wrist held at 90: presets and the joystick never move it (the claw sits loosely
+                                  # on it). The firmware holds it too (WRIST_LOCK). demo.py --wrist unlocks both sides.
     voice_arms: bool = True       # a voice command (not stop/follow) arms the arm by itself when it is locked, so
                                   # "james home" works with no hand in view. The hand-lost disarm only applies
                                   # once a hand has been used since arming.
@@ -232,6 +233,8 @@ class ArmController:
         if p is None or not self.armed:
             return False
         for k, v in p.items():
+            if k == "wrist" and self.cfg.lock_wrist:
+                continue
             self.target[k] = self.j[k].clamp(v)
         self.steering = False
         return True
@@ -290,6 +293,10 @@ class ArmController:
             off = dx if name == pair[0] else dy
         else:
             name, off = (pair[0], dx) if abs(dx) >= abs(dy) else (pair[1], dy)
+        if name == "wrist" and c.lock_wrist:                         # peace left/right does nothing while locked
+            self.active_joint, self.drive = None, 0.0
+            self.target = dict(self.pos)
+            return
         mag = (abs(off) - c.stick_dead) / max(c.stick_full - c.stick_dead, 1e-6)
         drive = (1 if off > 0 else -1) * max(0.0, min(1.0, mag))
         if drive != 0.0 and self._stick_joint is None:               # the move starts now

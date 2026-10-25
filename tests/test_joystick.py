@@ -30,8 +30,23 @@ def test_point_up_lifts_shoulder(rig):
     assert arm.active_joint == "shoulder" and arm.pos["shoulder"] > s0
 
 
-def test_peace_drives_far_joints(rig):
-    r, arm, link, clock = rig
+def test_peace_left_right_is_dead_while_wrist_locked(rig):
+    r, arm, link, clock = rig                                  # default: lock_wrist=True
+    run(r, arm, clock, "open", 1.5)
+    run(r, arm, clock, "peace", 0.5, x=320)
+    before = dict(arm.pos)
+    run(r, arm, clock, "peace", 1.0, x=320 - 0.3 * 640)
+    assert arm.active_joint is None and arm.pos == before
+    run(r, arm, clock, "peace", 1.0, x=320, y=400 - 0.3 * 480)   # up/down still drives the elbow
+    assert arm.active_joint == "elbow"
+
+
+def test_peace_drives_wrist_when_unlocked():
+    from james_gestures import ArmConfig, ArmController, GestureReader, PrintLink
+    from tests.test_arm import Clock
+    clock, link = Clock(), PrintLink(quiet=True)
+    r = GestureReader(clock=clock)
+    arm = ArmController(link, cfg=ArmConfig(mirror=False, lock_wrist=False), clock=clock)
     run(r, arm, clock, "open", 1.5)
     run(r, arm, clock, "peace", 0.5, x=320)
     w0 = arm.pos["wrist"]

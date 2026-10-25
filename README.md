@@ -52,7 +52,7 @@ where you start pointing is the zero, and how far your fingertip is from that ze
 | Open palm, held 1 s | **ARM**: motion enabled (also the idle pose: nothing moves) |
 | Fist, held 0.3 s | **STOP**: freeze and disarm (soft kill switch) |
 | **Point** (1 finger) and move | left/right = **base**, up/down = **shoulder** |
-| **Peace** (2 fingers) and move | left/right = **wrist**, up/down = **elbow** |
+| **Peace** (2 fingers) and move | up/down = **elbow** (left/right = wrist only with `--wrist`; the wrist is locked straight by default because the claw sits loosely on it) |
 | Un-point (back to open palm) | that joint stops; pointing again sets a new zero |
 | Pinch / release | claw close / open |
 | Hand leaves camera | holds still, disarms after 2 s |

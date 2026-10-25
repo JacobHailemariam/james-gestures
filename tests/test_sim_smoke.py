@@ -81,6 +81,8 @@ def test_preset_reaches_target_in_sim(rig, preset):
     joints = default_joints()
     for name in HOME:
         want = joints[name].clamp(PRESETS[preset].get(name, arm.pos[name]))
+        if name == "wrist" and arm.cfg.lock_wrist:
+            want = joints[name].home                           # locked: presets never move the wrist
         got = sim_deg(link, name)
         assert abs(got - want) <= TOL_DEG, (preset, name, got, want)
         assert joints[name].lo <= got <= joints[name].hi
