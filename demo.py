@@ -98,7 +98,7 @@ def main():
             if voice:
                 for cmd in voice.poll():
                     ok = arm.voice(cmd)
-                    heard = f"{cmd}" + ("" if ok else " (ignored: arm it first)")
+                    heard = f"{cmd}" + ("" if ok else " (ignored)")
                     print("voice:", heard)
             state = arm.update(g)
             if board and board.poll() and board.dropped:   # board rebooted or USB dropped: it is disarmed, so are we

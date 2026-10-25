@@ -77,6 +77,9 @@ class ArmConfig:
                                   # an open palm is shown (0 = no limit)
     mirror: bool = True           # webcam is mirrored: moving your hand right should turn the arm right
     pinch_claw: bool = True       # pinch closes / release opens the claw (set False to leave the claw to voice)
+    voice_arms: bool = True       # a voice command (not stop/follow) arms the arm by itself when it is locked, so
+                                  # "james home" works with no hand in view. The hand-lost disarm only applies
+                                  # once a hand has been used since arming.
     claw_release_ratio: float = 0.46  # open the claw only once the thumb-index gap is really above this
                                   # (= GestureConfig.pinch_ratio * pinch_release). One noisy frame can
                                   # un-confirm a held pinch; that must not drop what the claw is holding.
@@ -100,6 +103,7 @@ class ArmController:
         self.active_joint = None          # joint the joystick is driving right now (for the HUD / sim)
         self.drive = 0.0                  # -1..1 joystick deflection on that joint
         self.stick_gated = False          # move window used up: stick is dead until an open palm
+        self._hand_used = False           # a hand has driven since the last ARM 1 (enables hand-lost disarm)
         self._stick_joint = None          # joint locked in for the current move
         self._move_since = None           # clock when the current move left the dead zone
         self._palm_since = self._fist_since = None
@@ -121,13 +125,15 @@ class ArmController:
                 self.state = "PRESET"
                 self._step(dt)
                 return self.state
-            if self.armed and now - self._last_seen > c.lost_disarm_s:
+            if self.armed and self._hand_used and now - self._last_seen > c.lost_disarm_s:
                 self._disarm("hand lost")
             elif self.armed:
-                self.state = "HOLD"
+                self.state = "HOLD" if self._hand_used else "ARMED"   # voice-armed, no hand yet: just wait
                 self.target = dict(self.pos)          # freeze where we are
             return self.state
         self._last_seen = now
+        if self.armed:
+            self._hand_used = True
 
         # fist -> STOP (checked first, always wins)
         self._fist_since = (self._fist_since or now) if g.fist else None
@@ -142,11 +148,8 @@ class ArmController:
         if g.open_palm:
             self.stick_gated = False              # palm shown: the stick may be used again
         if not self.armed and self._palm_since is not None and now - self._palm_since >= c.arm_hold_s:
-            self.armed, self.state = True, "ARMED"
-            self.steering = True
+            self._arm()
             self._palm_ref = g.palm_px or None
-            self.link.send("ARM 1")
-            self._palm_since = None
 
         pinch_changed = g.pinch != self._last_pinch
         if pinch_changed and not g.pinch and g.pinch_ratio is not None and g.pinch_ratio <= c.claw_release_ratio:
@@ -196,10 +199,13 @@ class ArmController:
         return True
 
     def voice(self, cmd: str) -> bool:
-        """Apply one voice command (see voice.py). STOP works even when disarmed; voice can never ARM."""
+        """Apply one voice command (see voice.py). STOP works even when disarmed. Any other command arms the
+        arm first if it is locked (cfg.voice_arms), so voice works with no hand in the picture."""
         if cmd == "stop":
             self.stop()
             return True
+        if not self.armed and self.cfg.voice_arms and cmd != "follow" and (cmd in ("grab", "release") or cmd in PRESETS):
+            self._arm()
         if cmd == "grab":
             return self.set_claw(1)
         if cmd == "release":
@@ -217,6 +223,13 @@ class ArmController:
             self._step(dt)
 
     # ---------- internals ----------
+    def _arm(self) -> None:
+        self.armed, self.state = True, "ARMED"
+        self.steering = True
+        self._hand_used = False
+        self._palm_since = None
+        self.link.send("ARM 1")
+
     def _joystick(self, g: GestureFrame, dt: float) -> None:
         """Point / peace = clutch in; offset from where it began drives one joint at a speed."""
         c = self.cfg
