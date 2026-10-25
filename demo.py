@@ -120,6 +120,8 @@ def main():
                 hint = "hold open palm to arm"
             elif not arm.steering:
                 hint = "preset playing · say 'follow' or press f to steer again · fist = STOP"
+            elif arm.stick_gated:
+                hint = "move window over: show an open palm, then point again"
             elif arm.active_joint:
                 hint = f"driving {arm.active_joint.upper()}  (un-point to stop)"
             else:
