@@ -57,7 +57,9 @@ def default_joints() -> dict[str, Joint]:
 
 
 PRESETS = {
-    "home": {"base": 135, "shoulder": 90, "elbow": 90, "wrist": 90},
+    "home": {"base": 135, "shoulder": 30, "elbow": 150, "wrist": 90},      # park: folded back against the bag,
+                                                                          # no long lever on the shoulder servo
+    "straight": {"base": 135, "shoulder": 90, "elbow": 90, "wrist": 90},  # every servo at 1500 us: the reference
     "raise": {"shoulder": 150, "elbow": 120},
     "reach": {"shoulder": 110, "elbow": 40},
     "tuck": {"shoulder": 30, "elbow": 150},
