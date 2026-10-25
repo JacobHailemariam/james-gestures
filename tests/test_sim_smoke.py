@@ -106,6 +106,6 @@ def test_claw_follows_commands_only_when_armed(rig):
     assert link.data.joint("claw_r").qpos[0] == open_gap
     arm_with_palm(arm, reader, clock)
     assert arm.set_claw(1)
-    assert link.data.joint("claw_r").qpos[0] < open_gap
+    assert link.data.joint("claw_r").qpos[0] > open_gap     # finger_r slides +y toward the centre = closed
     arm.set_claw(0)
     assert link.data.joint("claw_r").qpos[0] == open_gap
