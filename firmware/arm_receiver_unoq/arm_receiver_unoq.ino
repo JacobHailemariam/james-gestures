@@ -37,6 +37,7 @@ const unsigned long STEP_US = 1000;                        // time between pulse
 long baseNow = 0, baseGoal = 0;                            // in steps, 0 = where it was at power on
 const float BASE_HOME_DEG = 135;                           // the Python side's home for the base
 bool lastDirHigh = false;
+bool stepperOn = false;                                   // TB6600 enabled only while the base has somewhere to go
 
 // ---------- commands from the laptop ----------
 const unsigned long POLL_MS = 5;                           // Monitor.available() is a round trip to Linux
@@ -76,9 +77,16 @@ void setup() {
   Monitor.println(pcaOk ? "READY" : "READY (PCA9685 not found: servos off)");
 }
 
+void stepper(bool on) {                                   // enabling pulls holding current through the coils:
+  if (on == stepperOn) return;                             // keep it off until the first base move, so ARM 1
+  digitalWrite(PIN_ENA, on ? LOW : HIGH);                  // alone never loads the supply
+  stepperOn = on;
+  if (on) delay(5);                                        // let the driver wake before the first pulse
+}
+
 void disarm(const char *why) {
   armed = false; baseGoal = baseNow;
-  digitalWrite(PIN_ENA, HIGH);
+  stepper(false);
   // servos keep their last pulse so the arm holds its pose instead of dropping; cut power with the kill switch
   Monitor.print("OK "); Monitor.println(why);
 }
@@ -90,7 +98,7 @@ void handle(String cmd) {
   if (cmd == "ARM 0") { disarm("DISARM"); return; }
   if (cmd == "ARM 1") {
     if (!pcaOk) initPca();
-    armed = true; digitalWrite(PIN_ENA, LOW);
+    armed = true;                                          // stepper stays disabled until a base command
     Monitor.println(pcaOk ? "OK ARM" : "OK ARM (no PCA9685: servos off)");
     return;
   }
@@ -129,9 +137,11 @@ void loop() {
     lastPoll = millis();
     readCommands();
   }
+  if (armed && baseNow == baseGoal) stepper(false);         // goal reached: release the holding current
   // one base step at a time, never blocking the command reader
   if (armed && baseNow != baseGoal && micros() - lastStep >= STEP_US) {
     lastStep = micros();
+    stepper(true);
     bool fwd = baseGoal > baseNow;
     if (fwd != lastDirHigh) {                              // TB6600 wants a pause after a DIR change
       digitalWrite(PIN_DIR, fwd ? HIGH : LOW);
