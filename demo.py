@@ -80,6 +80,7 @@ def main():
     cap = cv2.VideoCapture(a.camera)
     if not cap.isOpened():
         raise SystemExit(f"camera {a.camera} not available")
+    board = next((l for l in getattr(link, "links", [link]) if isinstance(l, SerialLink)), None)
     try:
         while True:
             ok, frame = cap.read()
@@ -95,6 +96,10 @@ def main():
                     heard = f"{cmd}" + ("" if ok else " (ignored: arm it first)")
                     print("voice:", heard)
             state = arm.update(g)
+            if board and board.poll() and board.dropped:   # board rebooted or USB dropped: it is disarmed, so are we
+                board.dropped = False
+                arm.stop()
+                print("board lost: check its power and USB; reconnecting...")
 
             for o in tr.others:
                 draw_hand(frame, o, (90, 90, 90), 1)
@@ -131,6 +136,9 @@ def main():
             if voice:
                 cv2.putText(frame, f"voice: {heard or '...'}", (12, 96), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
                             (255, 210, 120), 1, cv2.LINE_AA)
+            if board and board.lost:
+                cv2.putText(frame, "BOARD LOST: check power/USB, waiting for PONG...", (12, 122),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2, cv2.LINE_AA)
             cv2.imshow("james-gestures", frame)
 
             k = cv2.waitKey(1) & 0xFF
