@@ -61,13 +61,16 @@ PRESETS = {
     "raise": {"shoulder": 150, "elbow": 120},
     "reach": {"shoulder": 110, "elbow": 40},
     "tuck": {"shoulder": 30, "elbow": 150},
-    # The four demo poses. PLACEHOLDERS: base swung 90 deg either way, shoulder/elbow near their limits. Nobody has measured
-    # them on the real arm yet. Steer to the pose in the sim and say "james save left shoulder" (or edit
-    # poses.json); saved poses override these at startup. Which way is "left" depends on the mounting.
-    "left shoulder": {"base": 225, "shoulder": 160, "elbow": 140, "wrist": 90},   # base > 135 = arm swings left
-    "right shoulder": {"base": 45, "shoulder": 160, "elbow": 140, "wrist": 90},
-    "left hip": {"base": 225, "shoulder": 20, "elbow": 160, "wrist": 90},
-    "right hip": {"base": 45, "shoulder": 20, "elbow": 160, "wrist": 90},
+    # The four demo poses, solved by tools/solve_poses.py from the backpack geometry in sim/arm.xml (bag
+    # 245 x 420 x 50, plate centre (155, 268)). "Left" = the wearer's left. Fingertip targets, mm, in the
+    # bag frame: shoulders (215|30, -60, 600) = above the shoulder just in front of the back face; hips
+    # (430|-180, -50, 150) = beside the hip, 185 mm outside the bag. The joints only fold +-70 deg, so the
+    # claw can come at most ~70 mm in front of the back face. Re-run the solver after changing the targets,
+    # or overwrite any pose live with "james save <name>" (poses.json wins over these).
+    "left shoulder": {"base": 55.2, "shoulder": 156.1, "elbow": 148.5, "wrist": 130.7},
+    "right shoulder": {"base": 24.4, "shoulder": 159.6, "elbow": 142.2, "wrist": 130.3},
+    "left hip": {"base": 158.2, "shoulder": 148.2, "elbow": 158.9, "wrist": 136.1},
+    "right hip": {"base": 115.6, "shoulder": 25.5, "elbow": 29.5, "wrist": 57.2},
 }
 POSES_FILE = "poses.json"      # user-saved poses, {name: {joint: deg}}; loaded over PRESETS by ArmController
 
