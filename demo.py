@@ -64,6 +64,10 @@ def main():
     ap.add_argument("--sim", action="store_true", help="drive a MuJoCo model of the arm instead of the board")
     ap.add_argument("--speed", type=float, default=1.0,
                     help="multiply every joint's max speed (deg/s) by this, e.g. 2 for a snappier sim")
+    ap.add_argument("--min-hand", type=float, default=0.05,
+                    help="ignore hands smaller than this fraction of the frame height (background people); 0 = off")
+    ap.add_argument("--log", help="write per-frame finger ratios to this CSV; keys 1-5 label the gesture you hold "
+                                  "(1 open 2 point 3 peace 4 pinch 5 fist 0 none). Summarise: tools/tune_hands.py")
     a = ap.parse_args()
 
     link = SerialLink(a.port, a.baud) if a.port else PrintLink()
@@ -75,7 +79,13 @@ def main():
     for jt in joints.values():
         jt.max_speed *= a.speed
     arm = ArmController(link, joints, cfg=ArmConfig(mirror=False, pinch_claw=not a.no_pinch_claw))
-    reader, tracker = GestureReader(), HandTracker(a.model)
+    reader, tracker = GestureReader(), HandTracker(a.model, min_palm_frac=a.min_hand)
+    hlog = None
+    if a.log:
+        from james_gestures.handlog import HandLog
+        hlog = HandLog(a.log)
+        print(f"logging hands to {a.log}: hold a gesture and press 1 open / 2 point / 3 peace / 4 pinch / 5 fist"
+              f" (0 = no label)")
     voice, heard, voice_problem = None, "", ""
     if a.voice:
         from james_gestures.voice import VoiceListener
@@ -114,6 +124,8 @@ def main():
                     voice_problem = voice.problem
                     print("voice:", voice_problem or "working again")
             state = arm.update(g)
+            if hlog:
+                hlog.write(reader.clock(), g, reader.poses.raw, h)
             if board and board.poll() and board.dropped:   # board rebooted or USB dropped: it is disarmed, so are we
                 board.dropped = False
                 arm.stop()
@@ -164,11 +176,20 @@ def main():
             if board and board.lost:
                 cv2.putText(frame, "BOARD LOST: check power/USB, waiting for PONG...", (12, 122),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2, cv2.LINE_AA)
+            if not g.hand and tr.others and a.min_hand:      # hands in view, all too small to drive
+                cv2.putText(frame, "hand too far from the camera (or --min-hand 0)", (12, 148),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 190, 255), 1, cv2.LINE_AA)
+            if hlog:
+                cv2.putText(frame, f"LOG label: {hlog.label or '-'}   rows {hlog.rows}   (1 open 2 point 3 peace "
+                                   f"4 pinch 5 fist 0 none)", (12, 174), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                            (255, 255, 0), 1, cv2.LINE_AA)
             cv2.imshow("james-gestures", frame)
 
             k = cv2.waitKey(1) & 0xFF
             if k == ord("q"):
                 break
+            if hlog and hlog.key(k):
+                continue
             if k == ord(" "):
                 arm.stop()
             if k == ord("f"):
@@ -178,6 +199,9 @@ def main():
                 arm.goto_preset(presets[k])
     finally:
         link.send("STOP")
+        if hlog:
+            hlog.close()
+            print(f"hand log: {hlog.rows} rows in {a.log}. Summary: python tools/tune_hands.py {a.log}")
         if voice:
             voice.close()
         cap.release()

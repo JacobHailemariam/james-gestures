@@ -53,6 +53,25 @@ left shoulder, right shoulder, left hip, right hip.
 Useful tools: `tools/eval_gestures.py` (synthetic gesture accuracy sweep), `tools/eval_voice.py` (records
 the mic and counts false commands), `tools/solve_poses.py` (computes named poses from the CAD geometry).
 
+## Status after branch `fix/issues-log` (Victor, Oct 25)
+
+| Issue | Status | What changed |
+|---|---|---|
+| 1 preset locks gestures | **Fixed** | `6207a83` re-applied with its test. Plus a bug in it: open palm is also the idle pose, so a resting palm aborted a preset on the next frame. Takeback now waits until the preset has arrived (2 new tests) |
+| 2 real hands | **Partly fixed, needs your numbers** | Dropout grace re-applied (one lost frame no longer resets the 1 s arm hold). Background hands smaller than `--min-hand` (0.05 of frame height) can no longer drive. New `demo.py --log hands.csv` + `tools/tune_hands.py` to measure real hands (below). Thresholds NOT changed blind |
+| 3 board reboots | **Software side fixed** | PING-on-open + BOARD LOST + `arm.resync()` re-applied. Power wiring and the `@reboot` cron are still yours |
+| 4 late commands | **Fixed** | `845621d` re-applied: max 10 joint updates/s per joint, final position always sent |
+| 5 voice dies silently | **Fixed** | A bad audio chunk no longer kills the thread; dead thread or 2 s of mic silence shows a red `VOICE DOWN` line, prints once, and the mic is reopened every 3 s (4 new tests) |
+| 6 calibration | Untouched | Needs the real arm |
+
+Firmware, protocol and `check_board.py` are untouched. `pytest -q`: 81 passed.
+
+**Issue 2, 5 minutes on the real webcam:** `python demo.py --sim --log hands.csv`. For each gesture, make
+it, hold it, then press its key while still holding (1 open, 2 point, 3 peace, 4 pinch, 5 fist), hold about
+5 s, press 0, next gesture. Quit with `q`, run `python tools/tune_hands.py hands.csv`, paste the output in
+Slack. It shows per gesture how often it was recognised, what it was mistaken for, and the measured ratios
+next to the thresholds, which is exactly what is needed to tune them.
+
 ## 3. Open issues, most important first
 
 Each one has: what we see, how to reproduce it without hardware, what we already know, and what a fix
