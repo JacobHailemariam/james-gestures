@@ -263,15 +263,70 @@ class PrintLink:
 
 
 class SerialLink:
-    """Writes commands to the microcontroller over USB serial (pip install pyserial)."""
+    """Writes commands to the microcontroller over USB serial (pip install pyserial).
+
+    Survives the board dropping off USB (power cut, cable knocked, reboot): send() never raises. The link
+    marks itself lost, reopens the port about once a second and then PINGs until the sketch answers PONG.
+    A rebooted board starts disarmed, so the caller must disarm too: check `dropped` every frame."""
+
+    RETRY_S = 1.0
 
     def __init__(self, port: str, baud: int = 115200):
         import serial
+        self._serial = serial
+        self.port, self.baud = port, baud
         self.ser = serial.Serial(port, baud, timeout=0)
         time.sleep(2.0)            # most Arduinos reset when the port opens
+        self.lost = False          # True while the board is unreachable (port gone or no PONG yet)
+        self.dropped = False       # set when the link is lost; the caller clears it after disarming
+        self._port_open = True
+        self._next_try = 0.0
+        self._inbuf = b""
 
     def send(self, line: str) -> None:
-        self.ser.write((line + "\n").encode())
+        if self.lost:
+            self.poll()
+            if self.lost:
+                return
+        try:
+            self.ser.write((line + "\n").encode())
+        except (self._serial.SerialException, OSError):
+            self._mark_lost()
+
+    def _mark_lost(self) -> None:
+        self.lost = self.dropped = True
+        self._port_open = False
+        try:
+            self.ser.close()
+        except Exception:
+            pass
+        self._next_try = time.monotonic() + self.RETRY_S
+
+    def poll(self) -> bool:
+        """Call every frame. Retries the port while lost; returns True while the board is unreachable."""
+        if not self.lost:
+            return False
+        now = time.monotonic()
+        if now < self._next_try:
+            return True
+        self._next_try = now + self.RETRY_S
+        try:
+            if not self._port_open:
+                self.ser = self._serial.Serial(self.port, self.baud, timeout=0)
+                self._port_open = True
+                self._inbuf = b""
+            self._inbuf += self.ser.read(4096)
+            if b"PONG" in self._inbuf:
+                self.lost = False
+                return False
+            self.ser.write(b"PING\n")
+        except (self._serial.SerialException, OSError):
+            self._port_open = False
+            try:
+                self.ser.close()
+            except Exception:
+                pass
+        return True
 
     def close(self) -> None:
         try:
