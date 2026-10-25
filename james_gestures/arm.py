@@ -161,7 +161,8 @@ class ArmController:
         c = self.cfg
 
         if g.hand is None:
-            self._palm_since = self._fist_since = None
+            if now - self._last_seen > 0.3:           # one dropped MediaPipe frame must not restart the holds
+                self._palm_since = self._fist_since = None
             if self.armed and not self.steering:
                 # a voice preset is playing: keep moving to it even with no hand in view
                 self.state = "PRESET"
@@ -192,6 +193,9 @@ class ArmController:
         if not self.armed and self._palm_since is not None and now - self._palm_since >= c.arm_hold_s:
             self._arm()
             self._palm_ref = g.palm_px or None
+        elif self.armed and not self.steering and self._palm_since is not None and now - self._palm_since >= c.arm_hold_s:
+            self.follow()                         # palm held 1 s after a preset: the hand steers again
+            self._palm_since = None
 
         pinch_changed = g.pinch != self._last_pinch
         if pinch_changed and not g.pinch and g.pinch_ratio is not None and g.pinch_ratio <= c.claw_release_ratio:
@@ -260,6 +264,13 @@ class ArmController:
         if cmd == "follow":
             return self.follow()
         return self.goto_preset(cmd)
+
+    def resync(self) -> None:
+        """The board rebooted: it is back at power-on state (home, nothing sent). Forget what we told it."""
+        self.pos = {n: jt.home for n, jt in self.j.items()}
+        self.target = dict(self.pos)
+        self._sent.clear()
+        self._sent_t.clear()
 
     def tick(self) -> None:
         """Advance toward targets without a new gesture frame (e.g. while a preset plays)."""
@@ -382,6 +393,15 @@ class SerialLink:
         self._port_open = True
         self._next_try = 0.0
         self._inbuf = b""
+        self.ser.read(4096)                 # drop boot noise (READY etc.)
+        self.ser.write(b"PING\n")
+        got, t0 = b"", time.monotonic()
+        while time.monotonic() - t0 < 3.0 and b"PONG" not in got:
+            got += self.ser.read(256)
+            time.sleep(0.02)
+        if b"PONG" not in got:              # port is open but the sketch isn't answering (app not started?)
+            print(f"{port}: no PONG from the sketch. Run tools/flash_unoq.py --no-flash; reconnecting meanwhile...")
+            self.lost = self.dropped = True
 
     def send(self, line: str) -> None:
         if self.lost:
