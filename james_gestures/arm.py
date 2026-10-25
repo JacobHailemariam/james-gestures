@@ -26,8 +26,10 @@ Output is a small text protocol (one command per line), see README.md and firmwa
 """
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from .gestures import GestureFrame
 
@@ -59,7 +61,35 @@ PRESETS = {
     "raise": {"shoulder": 150, "elbow": 120},
     "reach": {"shoulder": 110, "elbow": 40},
     "tuck": {"shoulder": 30, "elbow": 150},
+    # The four demo poses. PLACEHOLDERS: raise/tuck with the base turned 45 deg either way. Nobody has measured
+    # them on the real arm yet. Steer to the pose in the sim and say "james save left shoulder" (or edit
+    # poses.json); saved poses override these at startup. Which way is "left" depends on the mounting.
+    "left shoulder": {"base": 90, "shoulder": 150, "elbow": 120, "wrist": 90},
+    "right shoulder": {"base": 180, "shoulder": 150, "elbow": 120, "wrist": 90},
+    "left hip": {"base": 90, "shoulder": 30, "elbow": 150, "wrist": 90},
+    "right hip": {"base": 180, "shoulder": 30, "elbow": 150, "wrist": 90},
 }
+POSES_FILE = "poses.json"      # user-saved poses, {name: {joint: deg}}; loaded over PRESETS by ArmController
+
+
+def load_poses(path: str | Path | None = POSES_FILE) -> dict:
+    """Merge saved poses from `path` into PRESETS. Missing file = nothing to do."""
+    if not path or not Path(path).exists():
+        return {}
+    saved = json.loads(Path(path).read_text(encoding="utf-8"))
+    for name, pose in saved.items():
+        PRESETS[name] = {k: float(v) for k, v in pose.items()}
+    return saved
+
+
+def save_pose(name: str, pose: dict, path: str | Path | None = POSES_FILE) -> None:
+    """Store `pose` under `name` in PRESETS and in the poses file (which keeps every saved pose)."""
+    PRESETS[name] = {k: round(float(v), 1) for k, v in pose.items()}
+    if path:
+        p = Path(path)
+        saved = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+        saved[name] = PRESETS[name]
+        p.write_text(json.dumps(saved, indent=2) + "\n", encoding="utf-8")
 
 
 @dataclass
@@ -77,6 +107,7 @@ class ArmConfig:
                                   # an open palm is shown (0 = no limit)
     mirror: bool = True           # webcam is mirrored: moving your hand right should turn the arm right
     pinch_claw: bool = True       # pinch closes / release opens the claw (set False to leave the claw to voice)
+    poses_file: str | None = POSES_FILE  # saved poses ("james save left shoulder"); None = do not load or save
     voice_arms: bool = True       # a voice command (not stop/follow) arms the arm by itself when it is locked, so
                                   # "james home" works with no hand in view. The hand-lost disarm only applies
                                   # once a hand has been used since arming.
@@ -104,6 +135,7 @@ class ArmController:
         self.drive = 0.0                  # -1..1 joystick deflection on that joint
         self.stick_gated = False          # move window used up: stick is dead until an open palm
         self._hand_used = False           # a hand has driven since the last ARM 1 (enables hand-lost disarm)
+        load_poses(self.cfg.poses_file)
         self._stick_joint = None          # joint locked in for the current move
         self._move_since = None           # clock when the current move left the dead zone
         self._palm_since = self._fist_since = None
@@ -203,6 +235,9 @@ class ArmController:
         arm first if it is locked (cfg.voice_arms), so voice works with no hand in the picture."""
         if cmd == "stop":
             self.stop()
+            return True
+        if cmd.startswith("save:"):                   # works armed or not: it records where the arm is now
+            save_pose(cmd[5:], self.pos, self.cfg.poses_file)
             return True
         if not self.armed and self.cfg.voice_arms and cmd != "follow" and (cmd in ("grab", "release") or cmd in PRESETS):
             self._arm()

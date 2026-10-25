@@ -45,7 +45,11 @@ WORDS = {
     "home": "home", "reset": "home",
     "tuck": "tuck", "rest": "tuck", "down": "tuck",
     "follow": "follow", "resume": "follow", "move": "follow",
+    "left shoulder": "left shoulder", "right shoulder": "right shoulder",     # named poses (arm.py PRESETS)
+    "left hip": "left hip", "right hip": "right hip",
 }
+POSES = ("home", "raise", "reach", "tuck", "left shoulder", "right shoulder", "left hip", "right hip")
+SAVE_WORD = "save"           # "james save left shoulder": store the current angles under that name
 STOP_WORDS = {w for w, c in WORDS.items() if c == "stop"}
 WAKE_WORDS = ("james",)      # must be in the Vosk model's vocabulary (it warns and drops the word otherwise)
 WAKE_WINDOW = 3              # the command has to be within this many words after the wake word ("james let go")
@@ -73,6 +77,16 @@ def parse(text: str) -> list[str]:
         return ["stop"]
     out, i = [], 0
     while i < len(words):
+        if words[i] == SAVE_WORD:                       # "save <pose name>" -> "save:<pose name>"
+            for n in (2, 1):
+                name = " ".join(words[i + 1:i + 1 + n])
+                if name in POSES:
+                    out.append(f"save:{name}")
+                    i += 1 + n
+                    break
+            else:
+                i += 1
+            continue
         two = " ".join(words[i:i + 2])
         if two in WORDS:
             out.append(WORDS[two])
@@ -111,7 +125,7 @@ class VoiceListener:
         self._sd = sd
         self.model = vosk.Model(model_path) if model_path else vosk.Model(lang="en-us")
         self.wake = tuple(wake) if wake else None
-        grammar = json.dumps(sorted(WORDS) + list(self.wake or ()) + ["[unk]"])
+        grammar = json.dumps(sorted(WORDS) + [SAVE_WORD] + list(self.wake or ()) + ["[unk]"])
         self.rec = vosk.KaldiRecognizer(self.model, sample_rate, grammar)
         self.rec.SetWords(True)
         self.min_conf, self.rate, self.device = min_conf, sample_rate, device
