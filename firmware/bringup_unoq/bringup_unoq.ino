@@ -23,7 +23,8 @@ const int TEST_STEPS = 200;                                // 200 of 3200 pulses
 const uint8_t PCA_ADDR = 0x40;
 const uint32_t PCA_OSC_HZ = 27000000;
 const float SERVO_HZ = 50;
-const int SERVO_US_MIN = 500, SERVO_US_MAX = 2500;         // 0..180 degrees
+const int SERVO_US_MIN = 500, SERVO_US_MAX = 2500, SERVO_US_MID = 1500;
+const float US_PER_DEG = 2000.0 / 270.0;                   // ANNIMOS 60/25 kg servos: 270 deg over 500..2500 us
 const uint8_t TEST_CHANNEL = 4;                            // shoulder (60 kg servo)
 Adafruit_PWMServoDriver pwm(PCA_ADDR, Wire);
 bool pcaOk = false;
@@ -61,10 +62,10 @@ void stepperOff() {
   digitalWrite(PIN_ENA, HIGH);
 }
 
-void servoDeg(uint8_t ch, int deg) {
+void servoDeg(uint8_t ch, int deg) {                      // real degrees, 90 = centre (1500 us)
   deg = constrain(deg, 0, 180);
-  int us = SERVO_US_MIN + (long)(SERVO_US_MAX - SERVO_US_MIN) * deg / 180;
-  pwm.writeMicroseconds(ch, us);
+  long us = SERVO_US_MID + (long)((deg - 90) * US_PER_DEG + ((deg >= 90) ? 0.5f : -0.5f));
+  pwm.writeMicroseconds(ch, constrain(us, (long)SERVO_US_MIN, (long)SERVO_US_MAX));
 }
 
 void i2cScan() {
