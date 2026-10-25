@@ -44,12 +44,33 @@ const unsigned long POLL_MS = 5;                           // Monitor.available(
 bool armed = false;
 String line;
 
+// ---------- PCA9685 watchdog ----------
+// A PCA9685 whose VCC dips (servo inrush, shared ground) resets itself: it wakes up ASLEEP at 200 Hz with every
+// output off, and it still answers on I2C. Before this watchdog the sketch only set it up at boot, so after one
+// dip every later command was accepted and nothing moved. Now its prescale is checked every PCA_CHECK_MS; if it
+// changed, the chip is set up again and every pulse it was making is restored.
+const unsigned long PCA_CHECK_MS = 250;
+uint8_t pcaPrescale = 0;                                   // what setPWMFreq(50) wrote; a reset puts 30 back
+unsigned long lastPcaCheck = 0, lastPcaWarn = 0;
+int pcaResets = 0;
+
+// ---------- one servo comes alive at a time ----------
+// The first pulse on a channel makes its servo jump at stall current (a 60 kg servo draws amps). ARM plus the
+// first joint commands used to wake shoulder, elbow, wrist and both claw servos in the same millisecond: a
+// spike big enough to brown out the board. New channels now wait in line, one every ENERGIZE_GAP_MS.
+const unsigned long ENERGIZE_GAP_MS = 300;
+bool servoPending[16];
+unsigned long lastEnergize = 0;
+
+void allServosOff();
+
 bool initPca() {
   Wire.beginTransmission(PCA_ADDR);
   if (Wire.endTransmission() != 0) return false;
   if (!pwm.begin()) return false;
   pwm.setOscillatorFrequency(PCA_OSC_HZ);
   pwm.setPWMFreq(50);
+  pcaPrescale = pwm.readPrescale();
   pcaOk = true;
   allServosOff();
   return true;
@@ -57,7 +78,30 @@ bool initPca() {
 
 void allServosOff() {                                      // no pulses: the joints go limp
   if (!pcaOk) return;
-  for (uint8_t ch = 0; ch < 16; ch++) { pwm.setPWM(ch, 0, 4096); servoKnown[ch] = false; }
+  for (uint8_t ch = 0; ch < 16; ch++) { pwm.setPWM(ch, 0, 4096); servoKnown[ch] = false; servoPending[ch] = false; }
+}
+
+void servoWrite(uint8_t ch, float deg);
+
+void checkPca() {
+  if (!pcaOk || millis() - lastPcaCheck < PCA_CHECK_MS) return;
+  lastPcaCheck = millis();
+  Wire.beginTransmission(PCA_ADDR);
+  if (Wire.endTransmission() != 0) {                       // not answering at all: wiring or its VCC is off
+    if (millis() - lastPcaWarn > 2000) { lastPcaWarn = millis(); Monitor.println("WARN PCA9685 not answering on I2C"); }
+    return;
+  }
+  if (pwm.readPrescale() == pcaPrescale) return;           // healthy
+  pwm.begin();                                             // it reset: wake it, 50 Hz again, restore every pulse
+  pwm.setOscillatorFrequency(PCA_OSC_HZ);
+  pwm.setPWMFreq(50);
+  pcaPrescale = pwm.readPrescale();
+  for (uint8_t ch = 0; ch < 16; ch++) {
+    if (servoKnown[ch]) servoWrite(ch, servoNow[ch]); else pwm.setPWM(ch, 0, 4096);
+  }
+  pcaResets++;
+  Monitor.print("WARN PCA9685 had reset (power dip on its VCC?), restored. resets=");
+  Monitor.println(pcaResets);
 }
 
 void servoWrite(uint8_t ch, float deg) {                  // deg = real degrees, 90 = straight (after trim)
@@ -70,18 +114,28 @@ void servoWrite(uint8_t ch, float deg) {                  // deg = real degrees,
 void servoDeg(uint8_t ch, int deg) {                      // sets the goal; loop() slews toward it
   if (!pcaOk) return;
   deg = constrain(deg, 0, 180);
-  if (isClaw(ch)) {                                       // the claw just goes
-    servoNow[ch] = deg; servoKnown[ch] = true;
-    servoWrite(ch, deg);
-  } else if (!servoKnown[ch]) {                            // first command on this channel: the servo's real
-    servoNow[ch] = 90; servoKnown[ch] = true;              // position is unknown, so the one unavoidable jump
-    servoWrite(ch, 90);                                    // is to straight (home); the rest of the move slews
-  }
   servoGoal[ch] = deg;
+  if (!servoKnown[ch]) { servoPending[ch] = true; return; } // first command: energizeNext() wakes it in turn
+  if (isClaw(ch)) { servoNow[ch] = deg; servoWrite(ch, deg); }   // the claw just goes
+}
+
+void energizeNext() {                                     // at most one new servo every ENERGIZE_GAP_MS
+  if (!pcaOk || millis() - lastEnergize < ENERGIZE_GAP_MS) return;
+  for (uint8_t ch = 0; ch < 16; ch++) {
+    if (!servoPending[ch]) continue;
+    servoPending[ch] = false; servoKnown[ch] = true;
+    // the servo's real position is unknown, so its one unavoidable jump is to straight (90); the slew does the
+    // rest. The claw goes straight to its goal.
+    servoNow[ch] = isClaw(ch) ? servoGoal[ch] : 90;
+    servoWrite(ch, servoNow[ch]);
+    lastEnergize = millis();
+    Monitor.print("OK ENERGIZE ch"); Monitor.println(ch);   // informational: test_motors.py prints it
+    return;
+  }
 }
 
 void freezeServos() {                                     // STOP / ARM 0: stay where the slew got to
-  for (uint8_t ch = 0; ch < 16; ch++) servoGoal[ch] = servoNow[ch];
+  for (uint8_t ch = 0; ch < 16; ch++) { servoGoal[ch] = servoNow[ch]; servoPending[ch] = false; }
 }
 
 void tickServos() {
@@ -130,6 +184,7 @@ void handle(String cmd) {
   if (cmd == "ARM 0") { disarm("DISARM"); return; }
   if (cmd == "ARM 1") {
     if (!pcaOk) initPca();
+    lastPcaCheck = 0; checkPca();                          // make sure the chip is awake before anything moves
     armed = true;                                          // stepper stays disabled until a base command
     Monitor.println(pcaOk ? "OK ARM" : "OK ARM (no PCA9685: servos off)");
     return;
@@ -174,6 +229,8 @@ void loop() {
     lastPoll = millis();
     readCommands();
   }
+  checkPca();                                              // re-set-up the PCA9685 if a power dip reset it
+  energizeNext();                                          // wake queued servos one at a time
   tickServos();                                            // slew every servo toward its goal
   if (armed && baseNow == baseGoal) stepper(false);         // goal reached: release the holding current
   // one base step at a time, never blocking the command reader
