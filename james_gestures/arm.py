@@ -64,10 +64,10 @@ PRESETS = {
     # The four demo poses. PLACEHOLDERS: raise/tuck with the base turned 45 deg either way. Nobody has measured
     # them on the real arm yet. Steer to the pose in the sim and say "james save left shoulder" (or edit
     # poses.json); saved poses override these at startup. Which way is "left" depends on the mounting.
-    "left shoulder": {"base": 90, "shoulder": 150, "elbow": 120, "wrist": 90},
-    "right shoulder": {"base": 180, "shoulder": 150, "elbow": 120, "wrist": 90},
-    "left hip": {"base": 90, "shoulder": 30, "elbow": 150, "wrist": 90},
-    "right hip": {"base": 180, "shoulder": 30, "elbow": 150, "wrist": 90},
+    "left shoulder": {"base": 180, "shoulder": 150, "elbow": 120, "wrist": 90},   # base > 135 = arm swings left
+    "right shoulder": {"base": 90, "shoulder": 150, "elbow": 120, "wrist": 90},
+    "left hip": {"base": 180, "shoulder": 30, "elbow": 150, "wrist": 90},
+    "right hip": {"base": 90, "shoulder": 30, "elbow": 150, "wrist": 90},
 }
 POSES_FILE = "poses.json"      # user-saved poses, {name: {joint: deg}}; loaded over PRESETS by ArmController
 
