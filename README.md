@@ -83,8 +83,10 @@ word the same 100 s of noise gave 0.
 | tuck | preset: shoulder 30, elbow 150 | rest, down |
 | follow | hand steers again after a preset | resume, move |
 
-Voice can never ARM: that still needs the held open palm. A preset pauses hand steering until `follow`
-(or `f`), so the hand can't drag the arm off the pose, and it keeps playing even if the hand leaves view.
+Voice needs no hand in the picture. If the arm is locked, "james home" (or any claw or preset word) arms it
+and goes; "james follow" alone does not. While a hand is driving, losing it for 2 s still disarms; armed by
+voice with no hand yet, it simply waits. A preset pauses hand steering until `follow` (or `f`), so the hand
+can't drag the arm off the pose, and it keeps playing even if the hand leaves view.
 The recogniser only knows these words plus "james"; every word except stop needs a confident match, and
 "james stop" is acted on mid-sentence once it has shown up in two consecutive partial results. A voice `grab` is not undone by the next camera frame, and re-arming never opens the claw.
 

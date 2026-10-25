@@ -120,11 +120,12 @@ def test_after_wake_on_partial_text():
 
 # ---------- voice -> arm ----------
 
-def test_voice_cannot_arm_but_can_stop():
+def test_voice_arms_by_itself_and_can_stop():
     r, arm, link, clock = rig()
-    assert not arm.voice("grab") and not arm.voice("raise")
-    assert not arm.armed and "CLAW 1" not in link.log
-    assert arm.voice("stop") and "STOP" in link.log
+    assert arm.voice("raise") and arm.armed and link.log[0] == "ARM 1"      # locked -> "james raise" arms, then goes
+    assert arm.voice("grab") and link.log.count("ARM 1") == 1 and "CLAW 1" in link.log
+    assert arm.voice("stop") and "STOP" in link.log and not arm.armed
+    assert not arm.voice("follow") and not arm.armed                        # follow alone never arms
 
 
 def test_voice_grab_is_not_undone_by_the_next_frame():
