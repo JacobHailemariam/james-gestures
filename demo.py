@@ -179,10 +179,12 @@ def main():
             if not g.hand and tr.others and a.min_hand:      # hands in view, all too small to drive
                 cv2.putText(frame, "hand too far from the camera (or --min-hand 0)", (12, 148),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 190, 255), 1, cv2.LINE_AA)
-            if hlog:
-                cv2.putText(frame, f"LOG label: {hlog.label or '-'}   rows {hlog.rows}   (1 open 2 point 3 peace "
-                                   f"4 pinch 5 fist 0 none)", (12, 174), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                            (255, 255, 0), 1, cv2.LINE_AA)
+            if hlog:                                      # big yellow on a dark bar: must be readable at a glance
+                cv2.rectangle(frame, (0, 156), (w, 216), (20, 20, 20), -1)
+                cv2.putText(frame, f"LOG: {(hlog.label or '-').upper()}   rows {hlog.rows}", (12, 186),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2, cv2.LINE_AA)
+                cv2.putText(frame, "click this window, then 1 open 2 point 3 peace 4 pinch 5 fist 0 none",
+                            (12, 208), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1, cv2.LINE_AA)
             cv2.imshow("james-gestures", frame)
 
             k = cv2.waitKey(1) & 0xFF
