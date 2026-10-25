@@ -64,8 +64,10 @@ def main() -> int:
         print("pushing", src.name, "->", f"{APP_DIR}/sketch/sketch.ino")
         print(run(adb, "push", str(src), f"{APP_DIR}/sketch/sketch.ino"))
     print("restarting app on the board (compiles there, be patient)...")
-    out = run(adb, "shell", f"TMPDIR=/tmp arduino-app-cli app restart user:{APP}")
-    tail = [l for l in out.splitlines() if "error" in l.lower() or "restarted" in l.lower()]
+    # stop + start rather than restart: restart sometimes refuses with 'app is running' and leaves the MCU silent
+    run(adb, "shell", f"TMPDIR=/tmp arduino-app-cli app stop user:{APP}")
+    out = run(adb, "shell", f"TMPDIR=/tmp arduino-app-cli app start user:{APP}")
+    tail = [l for l in out.splitlines() if "error" in l.lower() or "started" in l.lower()]
     print("\n".join(tail[-5:]) or out[-800:])
     ok = ping(a.port)
     print("PONG: yes, the sketch is running" if ok else "no PONG: the sketch is not answering (see README troubleshooting)")
