@@ -35,12 +35,12 @@ MARGIN = 0.020                                                      # keep every
 # shoulder therefore means high (about 600 mm up), and around the hip means well out to the side.
 def targets() -> dict[str, np.ndarray]:
     lx, rx = (0.215, 0.030) if LEFT_IS_PLUS_X else (0.030, 0.215)
-    lhx, rhx = (0.430, -0.180) if LEFT_IS_PLUS_X else (-0.180, 0.430)
+    lhx, rhx = (0.380, -0.135) if LEFT_IS_PLUS_X else (-0.135, 0.380)
     return {
-        "left shoulder": np.array([lx, -0.060, 0.600]),     # above the shoulder, just in front of the back face
-        "right shoulder": np.array([rx, -0.060, 0.600]),
-        "left hip": np.array([lhx, -0.050, 0.150]),         # beside the hip, 185 mm outside the bag's edge
-        "right hip": np.array([rhx, -0.050, 0.150]),
+        "left shoulder": np.array([lx, -0.130, 0.560]),     # above the shoulder, 130 mm in front of the back face
+        "right shoulder": np.array([rx, -0.130, 0.560]),
+        "left hip": np.array([lhx, -0.120, 0.150]),         # beside the hip, outside the bag, 120 mm forward
+        "right hip": np.array([rhx, -0.120, 0.150]),
     }
 
 
@@ -50,6 +50,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--write", action="store_true", help="write the result into poses.json (merged)")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--no-wrist", action="store_true", help="wrist locked straight (90): the wrist link is not built yet")
     a = ap.parse_args()
 
     model = mujoco.MjModel.from_xml_path(str(MODEL))
@@ -58,6 +59,8 @@ def main() -> int:
     lo = np.array([model.joint(n).range[0] for n in jid])
     hi = np.array([model.joint(n).range[1] for n in jid])
     names = list(jid)
+    if a.no_wrist:
+        lo[3] = hi[3] = 0.0
     bodies = [model.body(n).id for n in ("upper", "fore", "hand")]
     tip = model.site("tip").id
 
