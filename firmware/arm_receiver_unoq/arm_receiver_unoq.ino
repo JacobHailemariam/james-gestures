@@ -21,7 +21,7 @@
 #include <Adafruit_PWMServoDriver.h>
 
 // ---------- servo channels on the PCA9685 ----------
-const uint8_t CH_SHOULDER = 0, CH_ELBOW = 1, CH_WRIST = 2, CH_CLAW = 3;
+const uint8_t CH_SHOULDER = 4, CH_ELBOW = 0, CH_WRIST = 1, CH_CLAW = 15;   // team-confirmed wiring: do not change
 const int CLAW_OPEN = 20, CLAW_CLOSED = 95;                // tune so CLOSED grips without stalling
 const int SERVO_US_MIN = 500, SERVO_US_MAX = 2500;         // 0..180 degrees
 const uint8_t PCA_ADDR = 0x40;

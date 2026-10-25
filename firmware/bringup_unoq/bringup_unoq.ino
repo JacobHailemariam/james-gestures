@@ -24,7 +24,7 @@ const uint8_t PCA_ADDR = 0x40;
 const uint32_t PCA_OSC_HZ = 27000000;
 const float SERVO_HZ = 50;
 const int SERVO_US_MIN = 500, SERVO_US_MAX = 2500;         // 0..180 degrees
-const uint8_t TEST_CHANNEL = 0;                            // shoulder
+const uint8_t TEST_CHANNEL = 4;                            // shoulder (60 kg servo)
 Adafruit_PWMServoDriver pwm(PCA_ADDR, Wire);
 bool pcaOk = false;
 
