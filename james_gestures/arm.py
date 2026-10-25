@@ -71,6 +71,10 @@ class ArmConfig:
     deadband_deg: float = 1.0     # don't resend a joint unless it moved this much
     stick_dead: float = 0.04      # joystick: offset from the clutch point (fraction of frame) ignored below this
     stick_full: float = 0.20      # ... and full speed at this offset
+    stick_lock_axis: bool = True  # once a move starts on one joint, a twitch on the other axis can't switch
+                                  # joints; un-point to pick again
+    stick_max_s: float = 3.0      # a move may last this long after it starts; then the stick goes dead until
+                                  # an open palm is shown (0 = no limit)
     mirror: bool = True           # webcam is mirrored: moving your hand right should turn the arm right
     pinch_claw: bool = True       # pinch closes / release opens the claw (set False to leave the claw to voice)
     claw_release_ratio: float = 0.46  # open the claw only once the thumb-index gap is really above this
@@ -95,6 +99,9 @@ class ArmController:
         self._anchor = None               # fingertip (norm) where the current point/peace began
         self.active_joint = None          # joint the joystick is driving right now (for the HUD / sim)
         self.drive = 0.0                  # -1..1 joystick deflection on that joint
+        self.stick_gated = False          # move window used up: stick is dead until an open palm
+        self._stick_joint = None          # joint locked in for the current move
+        self._move_since = None           # clock when the current move left the dead zone
         self._palm_since = self._fist_since = None
         self._last_seen = self._last_tick = clock()
         self._palm_ref = None
@@ -132,6 +139,8 @@ class ArmController:
 
         # open palm -> ARM
         self._palm_since = (self._palm_since or now) if g.open_palm else None
+        if g.open_palm:
+            self.stick_gated = False              # palm shown: the stick may be used again
         if not self.armed and self._palm_since is not None and now - self._palm_since >= c.arm_hold_s:
             self.armed, self.state = True, "ARMED"
             self.steering = True
@@ -212,18 +221,31 @@ class ArmController:
         """Point / peace = clutch in; offset from where it began drives one joint at a speed."""
         c = self.cfg
         pair = ("base", "shoulder") if g.point else ("wrist", "elbow") if g.peace else None
-        if pair is None or g.norm is None:
-            self._anchor, self.active_joint, self.drive = None, None, 0.0
-            self.target = dict(self.pos)                            # idle: hold still
+        if pair is None or g.norm is None or self.stick_gated:
+            self._anchor, self._stick_joint, self._move_since = None, None, None
+            self.active_joint, self.drive = None, 0.0
+            self.target = dict(self.pos)                            # idle (or gated): hold still
             return
         if self._anchor is None:
             self._anchor = g.norm
         dx, dy = g.norm[0] - self._anchor[0], self._anchor[1] - g.norm[1]   # dy: up = positive
         if c.mirror:
             dx = -dx
-        name, off = (pair[0], dx) if abs(dx) >= abs(dy) else (pair[1], dy)
+        if c.stick_lock_axis and self._stick_joint in pair:          # a move is under way: stay on its joint
+            name = self._stick_joint
+            off = dx if name == pair[0] else dy
+        else:
+            name, off = (pair[0], dx) if abs(dx) >= abs(dy) else (pair[1], dy)
         mag = (abs(off) - c.stick_dead) / max(c.stick_full - c.stick_dead, 1e-6)
         drive = (1 if off > 0 else -1) * max(0.0, min(1.0, mag))
+        if drive != 0.0 and self._stick_joint is None:               # the move starts now
+            self._stick_joint, self._move_since = name, self.clock()
+        if c.stick_max_s and self._move_since is not None and self.clock() - self._move_since >= c.stick_max_s:
+            self.stick_gated = True                                  # window over: dead until an open palm
+            self._anchor, self._stick_joint, self._move_since = None, None, None
+            self.active_joint, self.drive = None, 0.0
+            self.target = dict(self.pos)
+            return
         self.active_joint, self.drive = name, drive
         jt = self.j[name]
         self.target = dict(self.pos)
@@ -252,6 +274,7 @@ class ArmController:
         self.target = dict(self.pos)
         self.steering = True
         self._anchor, self.active_joint, self.drive = None, None, 0.0
+        self._stick_joint, self._move_since, self.stick_gated = None, None, False
         self._palm_since = self._fist_since = None
         # the claw is NOT reset: re-arming must never open it by itself and drop what it is holding
 
