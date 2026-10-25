@@ -14,7 +14,7 @@
 //   CLAW 1 | CLAW 0        close / open the claw
 //   PING                   replies PONG, moves nothing
 //
-// Untested on the assembled arm: tune the channels, CLAW_* and STEPS_PER_DEG. Keep the kill switch.
+// Untested on the assembled arm: tune CLAW_* and STEPS_PER_DEG there. Keep the kill switch.
 
 #include <Arduino_RouterBridge.h>
 #include <Wire.h>

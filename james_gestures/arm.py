@@ -21,7 +21,7 @@ Voice (voice.py -> ArmController.voice): "stop" always works, "grab"/"release" d
 ("raise", "reach", "home", "tuck") moves there and pauses hand steering until "follow". Voice can never ARM:
 that still needs the held open palm. Presets obey the same clamps and rate limits as the hand.
 
-Output is a small text protocol (one command per line), see README.md and firmware/arm_receiver.ino:
+Output is a small text protocol (one command per line), see README.md and firmware/arm_receiver_unoq/arm_receiver_unoq.ino:
   ARM 1 | ARM 0 | STOP | J <joint> <degrees> | CLAW 1 | CLAW 0
 """
 from __future__ import annotations

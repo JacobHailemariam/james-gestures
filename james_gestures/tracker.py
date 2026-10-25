@@ -5,7 +5,7 @@ hand is returned in `others` so a HUD can draw it faded, but it never produces c
 This is the same rule JAMES uses when its owner key is switched off.
 
 Needs: pip install mediapipe opencv-python, and the model file hand_landmarker.task
-(see README for the download link).
+(it ships in the repo root; pass another path with --model).
 """
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ class HandTracker:
 
         model_path = Path(model_path)
         if not model_path.exists():
-            raise FileNotFoundError(f"{model_path} not found. Download it first, see README.md")
+            raise FileNotFoundError(f"{model_path} not found: run from the repo root, or pass --model <path>")
         self._mp = mp
         opts = vision.HandLandmarkerOptions(
             base_options=mpt.BaseOptions(model_asset_path=str(model_path)),

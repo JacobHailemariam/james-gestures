@@ -2,7 +2,7 @@
 //
 // Nothing moves on its own. Open App Lab's Serial Monitor and type one command per line:
 //   scan    I2C scan, reports whether the PCA9685 (0x40) answers
-//   servo   sweep channel 0 (shoulder) slowly 90 -> 120 -> 60 -> 90, twice, then hold at 90
+//   servo   sweep channel 4 (shoulder, 60 kg servo) slowly 90 -> 120 -> 60 -> 90, twice, then hold at 90
 //   base    enable the stepper, 200 steps one way, pause, 200 steps back, disable
 //   off     stepper disabled (D4 HIGH) and all 16 servo outputs cut (no signal)
 //   help    show this list
@@ -102,7 +102,7 @@ bool sweepTo(int &deg, int target, unsigned long msPerDeg) {
     deg += (target > deg) ? 1 : -1;
     servoDeg(TEST_CHANNEL, deg);
     if (deg % 10 == 0) {
-      Monitor.print("  ch0 = ");
+      Monitor.print("  ch4 = ");
       Monitor.println(deg);
     }
     delay(msPerDeg);
@@ -116,7 +116,7 @@ void servoTest() {
     Monitor.println("ERR PCA9685 not found, run 'scan'");
     return;
   }
-  Monitor.println("Servo ch0: going to 90 (first pulse, it may jump), type anything to abort");
+  Monitor.println("Servo ch4 (shoulder): going to 90 (first pulse, it may jump), type anything to abort");
   int deg = 90;
   servoDeg(TEST_CHANNEL, deg);
   delay(1000);
