@@ -142,17 +142,10 @@ def test_preset_pauses_steering_until_follow():
     r, arm, link, clock = rig()
     feed(r, arm, clock, "open", 1.5)
     assert arm.voice("raise")
-    feed(r, arm, clock, hand("point", x=600, y=100), 3.0)  # pointing far away: must not drag the arm
+    feed(r, arm, clock, hand("open", x=600, y=100), 3.0)  # hand far away: must not drag the arm
     assert arm.state == "PRESET"
     assert abs(arm.pos["shoulder"] - 150) < 1e-6           # reached the preset
     assert arm.voice("follow") and arm.steering
-
-
-def test_open_palm_takes_steering_back_after_a_preset():
-    r, arm, link, clock = rig()
-    assert arm.voice("home") and not arm.steering           # voice-armed, preset holds the arm
-    feed(r, arm, clock, "open", 1.5)                        # palm held 1 s: the hand steers again
-    assert arm.steering and arm.armed
 
 
 def test_preset_keeps_playing_without_a_hand():

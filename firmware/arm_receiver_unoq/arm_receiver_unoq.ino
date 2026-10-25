@@ -1,30 +1,10 @@
-// arm_receiver_unoq.ino: receives james-gestures commands and drives the arm, on the Arduino UNO Q.
-//
-// Hardware (matches bringup_unoq.ino, which found it all working):
-//   servos:  PCA9685 16-channel PWM board on I2C (0x40), channels below, 50 Hz. ANNIMOS RDS5160SG (60 kg,
-//            shoulder) and RDS3225SG (25 kg, elbow/wrist) sweep 270 deg over 500..2500 us; the 9 g claw servo
-//            sweeps 180 deg over the same pulses. Protocol degrees are REAL degrees with 90 = centre (1500 us).
-//            Servos powered from the PCA9685's V+ terminal (own 5-6 V supply), ground shared with the board.
-//   base:    stepper on a TB6600-style driver: PUL D9, DIR D3, ENA D4 (ENA HIGH = disabled).
-//            PUL-/DIR-/ENA- to GND. Driver set to 3200 pulses/rev (1/16).
-//   The laptop's USB reaches this sketch through Monitor (demo.py --port COM3). Serial = the D0/D1 pins.
-//
-// Protocol (one command per line):
-//   ARM 1 | ARM 0          enable / disable motion (starts disabled, all servo outputs off)
-//   STOP                   freeze everything and disable
-//   J <joint> <deg>        joint = base | shoulder | elbow | wrist
-//   CLAW 1 | CLAW 0        close / open the claw
-//   PING                   replies PONG, moves nothing
-//
-// Untested on the assembled arm: tune CLAW_* and STEPS_PER_DEG there. Keep the kill switch.
-
 #include <Arduino_RouterBridge.h>
 #include <Wire.h>
 #include <Adafruit_PWMServoDriver.h>
 
 // ---------- servo channels on the PCA9685 ----------
 const uint8_t CH_SHOULDER = 4, CH_ELBOW = 0, CH_WRIST = 1;  // team-confirmed wiring: do not change
-const uint8_t CH_CLAW_L = 14, CH_CLAW_R = 15;              // two claw servos, one per jaw (left/right seen from above)
+const uint8_t CH_CLAW_L = 15, CH_CLAW_R = 14;              // two claw servos, one per jaw (left/right seen from above)
 const int CLAW_OPEN = 20, CLAW_CLOSED = 95;                // right jaw angles; tune so CLOSED grips without stalling
 const bool CLAW_L_MIRROR = true;                           // left jaw is the mirror image: it gets 180 - angle
 const bool WRIST_LOCK = true;                              // claw sits loosely on the wrist: hold the wrist straight

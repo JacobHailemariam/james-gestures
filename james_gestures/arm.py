@@ -57,21 +57,21 @@ def default_joints() -> dict[str, Joint]:
 
 
 PRESETS = {
-    "home": {"base": 135, "shoulder": 90, "elbow": 90, "wrist": 90},      # every servo at 1500 us: straight
-    "straight": {"base": 135, "shoulder": 90, "elbow": 90, "wrist": 90},  # same pose, second word for it
+    "home": {"base": 135, "shoulder": 90, "elbow": 90, "wrist": 90},
     "raise": {"shoulder": 150, "elbow": 120},
     "reach": {"shoulder": 110, "elbow": 40},
     "tuck": {"shoulder": 30, "elbow": 150},
-    # The four demo poses, for the WRIST LOCKED straight (lock_wrist / firmware WRIST_LOCK). With the wrist fixed
-    # the fingertip can never come closer than ~630 mm to the shoulder, so each pose is the arm fully folded
-    # (shoulder 20, elbow 20) and pointed by the base: "up" is base ~221, "down" ~41 in sim/arm.xml's frame.
-    # Fingertips (mm, bag frame): left shoulder ~(330,-150,740), right ~(-20,-150,740), left hip ~(500,-150,-90),
-    # right hip ~(-135,-150,-135). "Left" = the wearer's left. Re-solve with tools/solve_poses.py (no --no-wrist)
-    # once the claw is bolted down and the wrist can move. "james save <name>" overrides any of these.
-    "left shoulder": {"base": 241, "shoulder": 20, "elbow": 20, "wrist": 90},
-    "right shoulder": {"base": 201, "shoulder": 20, "elbow": 20, "wrist": 90},
-    "left hip": {"base": 1, "shoulder": 20, "elbow": 20, "wrist": 90},
-    "right hip": {"base": 81, "shoulder": 20, "elbow": 20, "wrist": 90},
+    # The four demo poses, solved by tools/solve_poses.py against sim/arm.xml, whose arm dimensions come from
+    # cad/assembly.step (shoulder->elbow 259, elbow->wrist 247, wrist->fingertips 249 mm, WITH the wrist link).
+    # Fingertip targets, mm, in the bag frame (x across the back seen from behind, y out of the back, z up):
+    # shoulders (215|30, -130, 560) = above the shoulder, 130 mm in front of the back face; hips
+    # (380|-135, -120, 150) = beside the hip, 120 mm forward. "Left" = the wearer's left. All four use the
+    # wrist: if the wrist link is not on the arm, re-solve with --no-wrist after shortening the hand in arm.xml.
+    # Overwrite any pose live with "james save <name>" (poses.json wins over these).
+    "left shoulder": {"base": 236.6, "shoulder": 30.2, "elbow": 20.6, "wrist": 27.0},
+    "right shoulder": {"base": 21.8, "shoulder": 156.3, "elbow": 160.0, "wrist": 172.3},
+    "left hip": {"base": 162.7, "shoulder": 160.0, "elbow": 160.0, "wrist": 180.0},
+    "right hip": {"base": 112.9, "shoulder": 22.6, "elbow": 38.0, "wrist": 11.6},
 }
 POSES_FILE = "poses.json"      # user-saved poses, {name: {joint: deg}}; loaded over PRESETS by ArmController
 
@@ -103,9 +103,6 @@ class ArmConfig:
     lost_disarm_s: float = 2.0    # hand gone this long while armed -> disarm
     smooth: float = 0.25          # EMA factor on targets (0..1, lower = smoother, laggier)
     deadband_deg: float = 1.0     # don't resend a joint unless it moved this much
-    send_period_s: float = 0.1    # ... and at most this often per joint while it moves (the UNO Q reads the
-                                  # link byte by byte over an RPC, so 30 updates/s per joint backs it up for
-                                  # seconds). The firmware slews between updates. The final position is always sent.
     stick_dead: float = 0.04      # joystick: offset from the clutch point (fraction of frame) ignored below this
     stick_full: float = 0.20      # ... and full speed at this offset
     stick_lock_axis: bool = True  # once a move starts on one joint, a twitch on the other axis can't switch
@@ -115,8 +112,6 @@ class ArmConfig:
     mirror: bool = True           # webcam is mirrored: moving your hand right should turn the arm right
     pinch_claw: bool = True       # pinch closes / release opens the claw (set False to leave the claw to voice)
     poses_file: str | None = POSES_FILE  # saved poses ("james save left shoulder"); None = do not load or save
-    lock_wrist: bool = True       # wrist held at 90: presets and the joystick never move it (the claw sits loosely
-                                  # on it). The firmware holds it too (WRIST_LOCK). demo.py --wrist unlocks both sides.
     voice_arms: bool = True       # a voice command (not stop/follow) arms the arm by itself when it is locked, so
                                   # "james home" works with no hand in view. The hand-lost disarm only applies
                                   # once a hand has been used since arming.
@@ -136,7 +131,6 @@ class ArmController:
         self.pos = {n: jt.home for n, jt in self.j.items()}       # where we told the arm to be
         self.target = dict(self.pos)
         self._sent = {}
-        self._sent_t = {}                 # clock of the last send per joint
         self._claw = None                 # last claw state sent (None = never sent)
         self._last_pinch = False          # claw follows pinch CHANGES, so a voice "grab" isn't undone next frame
         self.steering = True              # False while a preset plays: the hand stops aiming the arm
@@ -161,8 +155,7 @@ class ArmController:
         c = self.cfg
 
         if g.hand is None:
-            if now - self._last_seen > 0.3:           # one dropped MediaPipe frame must not restart the holds
-                self._palm_since = self._fist_since = None
+            self._palm_since = self._fist_since = None
             if self.armed and not self.steering:
                 # a voice preset is playing: keep moving to it even with no hand in view
                 self.state = "PRESET"
@@ -193,9 +186,6 @@ class ArmController:
         if not self.armed and self._palm_since is not None and now - self._palm_since >= c.arm_hold_s:
             self._arm()
             self._palm_ref = g.palm_px or None
-        elif self.armed and not self.steering and self._palm_since is not None and now - self._palm_since >= c.arm_hold_s:
-            self.follow()                         # palm held 1 s after a preset: the hand steers again
-            self._palm_since = None
 
         pinch_changed = g.pinch != self._last_pinch
         if pinch_changed and not g.pinch and g.pinch_ratio is not None and g.pinch_ratio <= c.claw_release_ratio:
@@ -240,8 +230,6 @@ class ArmController:
         if p is None or not self.armed:
             return False
         for k, v in p.items():
-            if k == "wrist" and self.cfg.lock_wrist:
-                continue
             self.target[k] = self.j[k].clamp(v)
         self.steering = False
         return True
@@ -264,13 +252,6 @@ class ArmController:
         if cmd == "follow":
             return self.follow()
         return self.goto_preset(cmd)
-
-    def resync(self) -> None:
-        """The board rebooted: it is back at power-on state (home, nothing sent). Forget what we told it."""
-        self.pos = {n: jt.home for n, jt in self.j.items()}
-        self.target = dict(self.pos)
-        self._sent.clear()
-        self._sent_t.clear()
 
     def tick(self) -> None:
         """Advance toward targets without a new gesture frame (e.g. while a preset plays)."""
@@ -307,10 +288,6 @@ class ArmController:
             off = dx if name == pair[0] else dy
         else:
             name, off = (pair[0], dx) if abs(dx) >= abs(dy) else (pair[1], dy)
-        if name == "wrist" and c.lock_wrist:                         # peace left/right does nothing while locked
-            self.active_joint, self.drive = None, 0.0
-            self.target = dict(self.pos)
-            return
         mag = (abs(off) - c.stick_dead) / max(c.stick_full - c.stick_dead, 1e-6)
         drive = (1 if off > 0 else -1) * max(0.0, min(1.0, mag))
         if drive != 0.0 and self._stick_joint is None:               # the move starts now
@@ -337,16 +314,9 @@ class ArmController:
             lim = jt.max_speed * dt
             self.pos[n] = jt.clamp(self.pos[n] + max(-lim, min(lim, err)))
             last = self._sent.get(n)
-            moved = last is None or abs(self.pos[n] - last) >= self.cfg.deadband_deg
-            if not moved:
-                continue
-            now = self.clock()
-            due = last is None or now - self._sent_t.get(n, -1e9) >= self.cfg.send_period_s
-            arrived = self.pos[n] == self.target[n]           # final value: never leave the arm short of it
-            if due or arrived:
+            if last is None or abs(self.pos[n] - last) >= self.cfg.deadband_deg:
                 self.link.send(f"J {n} {self.pos[n]:.1f}")
                 self._sent[n] = self.pos[n]
-                self._sent_t[n] = now
 
     def _disarm(self, why: str, stopped: bool = False) -> None:
         if self.armed and not stopped:
@@ -393,15 +363,6 @@ class SerialLink:
         self._port_open = True
         self._next_try = 0.0
         self._inbuf = b""
-        self.ser.read(4096)                 # drop boot noise (READY etc.)
-        self.ser.write(b"PING\n")
-        got, t0 = b"", time.monotonic()
-        while time.monotonic() - t0 < 3.0 and b"PONG" not in got:
-            got += self.ser.read(256)
-            time.sleep(0.02)
-        if b"PONG" not in got:              # port is open but the sketch isn't answering (app not started?)
-            print(f"{port}: no PONG from the sketch. Run tools/flash_unoq.py --no-flash; reconnecting meanwhile...")
-            self.lost = self.dropped = True
 
     def send(self, line: str) -> None:
         if self.lost:
