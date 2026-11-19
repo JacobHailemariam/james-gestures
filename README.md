@@ -233,15 +233,20 @@ docs/                engineering notes, issue log, a debugging write-up, measure
 **Jacob Hailemariam** wrote the software and electronics side of Atlas:
 
 - **Firmware** for the Arduino UNO Q: the command protocol, servo pulse mapping for 270-degree servos, the
-  60 deg/s slew limiter, the lazy stepper enable, the claw and wrist handling, and the hardware bring-up sketch.
+  60 deg/s slew limiter, the PCA9685 watchdog that recovers the chip after a power dip, staggered servo
+  power-up, the lazy stepper enable, the claw and wrist handling, and the hardware bring-up sketch.
 - **Controller** ([`arm.py`](james_gestures/arm.py)): the point/peace joystick, joint limits and rate caps,
-  axis lock and move window, the claw-release fix found by the robustness sweep, voice presets and pose saving.
+  axis lock and move window, palm takeback after a preset, the claw-release fix found by the robustness sweep,
+  voice presets and pose saving.
 - **Serial link**: PING handshake, board-loss detection and auto-reconnect, and the 10 Hz send cap that cured
   the multi-second lag.
-- **Voice**: the wake word, grammar and two-partial stop rule, with the measurement tool that justified them.
+- **Voice**: the wake word, grammar and two-partial stop rule, the health check that reopens a dead mic, and
+  the measurement tool that justified them.
+- **Perception**: the background-hand filter, and the real-webcam hand logger and tuning report that measured
+  879 frames at 100%.
 - **Simulation**: the MuJoCo model of the arm on the backpack, link lengths from the CAD, and the pose solver.
-- **Tooling and tests**: the gesture robustness sweep, flashing over adb, the README figures, CI, and most of
-  the 81 tests.
+- **Tooling and tests**: the gesture robustness sweep, flashing over adb, the README figures, CI, and the 81
+  tests.
 - **Wiring and bring-up** of the PCA9685, the TB6600 and the UNO Q on the real arm.
 
 ## Team
