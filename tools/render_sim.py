@@ -83,6 +83,68 @@ def make_gif(renderer, cam, path: Path, fps: int = 12, speed: float = 1.5, hold_
     link.close()
 
 
+def make_ppo_gif(renderer, cam, path: Path, policy_path: str, n_targets: int = 5, fps: int = 12,
+                 speed: float = 1.5, seed: int = 11) -> None:
+    """The trained policy driving the arm through the real ArmController to targets near the wearer.
+
+    The targets are the first `n_targets` near-body targets from a fixed seed (not picked by hand); the caption
+    says whether each was reached. A yellow ball marks the target."""
+    import mujoco
+    from PIL import Image
+
+    from james_gestures.arm import ArmConfig, ArmController
+    from rl.deploy import run_reach
+    from rl.env import ReachEnv
+    from rl.ppo import Policy
+
+    class Clock:
+        t = 0.0
+
+        def __call__(self):
+            return self.t
+
+    policy, clock = Policy(policy_path), Clock()
+    link = SimLink(show=False)
+    arm = ArmController(link, cfg=ArmConfig(mirror=False, poses_file=None), clock=clock)
+    arm.voice("home")                                  # arms the controller, already at home
+    sampler = ReachEnv(seed=seed)
+    targets = [sampler.sample_target(near_body=True) for _ in range(n_targets)]
+    frames, state = [], {"next": 0.0, "text": ""}
+    frame_every, sub = speed / fps, 1 / 60
+
+    def draw(target):
+        renderer.update_scene(link.data, camera=cam)
+        scn = renderer.scene
+        if scn.ngeom < scn.maxgeom:
+            mujoco.mjv_initGeom(scn.geoms[scn.ngeom], mujoco.mjtGeom.mjGEOM_SPHERE, np.array([0.025, 0, 0]),
+                                np.asarray(target, float), np.eye(3).flatten(), np.array([1.0, 0.8, 0.1, 1.0]))
+            scn.ngeom += 1
+        frames.append(caption(renderer.render(), state["text"]))
+
+    def wait_for(target):
+        def wait(dt):
+            end = clock.t + dt
+            while clock.t < end - 1e-9:
+                clock.t += sub
+                arm.tick()
+                if clock.t >= state["next"]:
+                    state["next"] += frame_every
+                    draw(target)
+        return wait
+
+    for i, tgt in enumerate(targets, 1):
+        state["text"] = f"PPO policy: target {i} of {n_targets}"
+        res = run_reach(arm, policy, tgt, wait=wait_for(tgt))
+        state["text"] = f"target {i}: " + ("reached" if res["reached"] else f"missed by {res['dist_mm']:.0f} mm")
+        wait_for(tgt)(0.8)
+        print(f"target {i}: reached={res['reached']} dist={res['dist_mm']:.0f} mm "
+              f"min clearance={res['min_clear_mm']:.0f} mm shielded={res['shielded']}")
+    imgs = [Image.fromarray(f).quantize(colors=128, method=Image.Quantize.MEDIANCUT) for f in frames]
+    imgs[0].save(path, save_all=True, append_images=imgs[1:], duration=round(1000 / fps), loop=0, optimize=True)
+    print(f"wrote {path.relative_to(ROOT)} ({len(frames)} frames, {path.stat().st_size / 1e6:.1f} MB)")
+    link.close()
+
+
 def main() -> int:
     import mujoco
 
@@ -95,6 +157,9 @@ def main() -> int:
     ap.add_argument("--lookat", type=float, nargs=3, default=[0.12, -0.08, 0.15], metavar=("X", "Y", "Z"))
     ap.add_argument("--gif", action="store_true", help="also write media/sim-voice.gif (needs Pillow)")
     ap.add_argument("--gif-width", type=int, default=480)
+    ap.add_argument("--ppo-gif", action="store_true",
+                    help="only write media/ppo-reach.gif: the trained PPO policy reaching targets near the wearer")
+    ap.add_argument("--policy", default=str(ROOT / "rl" / "reach_policy.pt"))
     a = ap.parse_args()
 
     link = SimLink(show=False)
@@ -103,6 +168,13 @@ def main() -> int:
     cam.type = mujoco.mjtCamera.mjCAMERA_FREE
     cam.lookat[:] = a.lookat
     cam.azimuth, cam.elevation, cam.distance = a.azimuth, a.elevation, a.distance
+
+    if a.ppo_gif:
+        gw = a.gif_width
+        gif_renderer = mujoco.Renderer(link.model, height=round(gw * a.height / a.width), width=gw)
+        make_ppo_gif(gif_renderer, cam, OUT / "ppo-reach.gif", a.policy)
+        gif_renderer.close()
+        return 0
 
     OUT.mkdir(exist_ok=True)
     panels = []

@@ -5,3 +5,5 @@ __pycache__/
 # demo screenshots (press p in demo.py)
 snap-*.png
 old-snaps/
+rl/runs/*.log
+__pycache__/

@@ -238,9 +238,17 @@ class ArmController:
     def goto_preset(self, name: str) -> bool:
         """Move to a named pose. The hand stops steering until follow() so it can't drag the arm off the preset."""
         p = PRESETS.get(name)
-        if p is None or not self.armed:
+        if p is None:
             return False
-        for k, v in p.items():
+        return self.goto(p)
+
+    def goto(self, pose: dict) -> bool:
+        """Move toward joint angles {joint: deg}, clamped to each joint's limits and rate-capped like any other
+        move. Presets and the PPO reaching policy (rl/deploy.py) both come through here. Hand steering pauses
+        until follow()."""
+        if not self.armed:
+            return False
+        for k, v in pose.items():
             self.target[k] = self.j[k].clamp(v)
         self.steering = False
         return True

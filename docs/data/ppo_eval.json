@@ -1,0 +1,175 @@
+{
+  "meta": {
+    "tasks_per_set": 1000,
+    "task_seed": 2026,
+    "success_radius_mm": 30.0,
+    "episode_limit_s": 8.0,
+    "policies": [
+      "seed0.pt",
+      "seed1.pt",
+      "seed2.pt"
+    ]
+  },
+  "open": {
+    "ppo_seeds": {
+      "seed0": {
+        "success_rate": 0.644,
+        "collision_rate": 0.0,
+        "timeout_rate": 0.356,
+        "median_final_mm": 28.870531533896305,
+        "mean_time_to_reach_s": 1.6343167701863355,
+        "collisions_by_zone": {},
+        "n": 1000
+      },
+      "seed1": {
+        "success_rate": 0.678,
+        "collision_rate": 0.001,
+        "timeout_rate": 0.321,
+        "median_final_mm": 28.119854765546354,
+        "mean_time_to_reach_s": 1.5970501474926255,
+        "collisions_by_zone": {
+          "head": 1
+        },
+        "n": 1000
+      },
+      "seed2": {
+        "success_rate": 0.677,
+        "collision_rate": 0.002,
+        "timeout_rate": 0.321,
+        "median_final_mm": 28.25294336491487,
+        "mean_time_to_reach_s": 1.5775480059084195,
+        "collisions_by_zone": {
+          "head": 1,
+          "torso": 1
+        },
+        "n": 1000
+      }
+    },
+    "ppo": {
+      "success_rate": {
+        "mean": 0.6663333333333333,
+        "std": 0.015797327481430395
+      },
+      "collision_rate": {
+        "mean": 0.001,
+        "std": 0.000816496580927726
+      },
+      "timeout_rate": {
+        "mean": 0.33266666666666667,
+        "std": 0.016499158227686096
+      },
+      "median_final_mm": {
+        "mean": 28.414443221452512,
+        "std": 0.32704796323204144
+      }
+    },
+    "ik": {
+      "success_rate": 0.821,
+      "collision_rate": 0.005,
+      "timeout_rate": 0.174,
+      "median_final_mm": 18.005448011873845,
+      "mean_time_to_reach_s": 1.2551766138855054,
+      "collisions_by_zone": {
+        "bag": 2,
+        "head": 3
+      },
+      "n": 1000
+    },
+    "random": {
+      "success_rate": 0.019,
+      "collision_rate": 0.019,
+      "timeout_rate": 0.962,
+      "median_final_mm": 598.5594399866216,
+      "mean_time_to_reach_s": 3.1210526315789475,
+      "collisions_by_zone": {
+        "head": 8,
+        "arm_upper_l": 1,
+        "torso": 4,
+        "shoulders": 2,
+        "arm_upper_r": 1,
+        "bag": 3
+      },
+      "n": 1000
+    }
+  },
+  "near": {
+    "ppo_seeds": {
+      "seed0": {
+        "success_rate": 0.803,
+        "collision_rate": 0.001,
+        "timeout_rate": 0.196,
+        "median_final_mm": 26.15590110573669,
+        "mean_time_to_reach_s": 1.7936488169364884,
+        "collisions_by_zone": {
+          "bag": 1
+        },
+        "n": 1000
+      },
+      "seed1": {
+        "success_rate": 0.86,
+        "collision_rate": 0.0,
+        "timeout_rate": 0.14,
+        "median_final_mm": 25.64031109278718,
+        "mean_time_to_reach_s": 1.7910465116279073,
+        "collisions_by_zone": {},
+        "n": 1000
+      },
+      "seed2": {
+        "success_rate": 0.835,
+        "collision_rate": 0.001,
+        "timeout_rate": 0.164,
+        "median_final_mm": 25.537130063688963,
+        "mean_time_to_reach_s": 1.8239520958083832,
+        "collisions_by_zone": {
+          "head": 1
+        },
+        "n": 1000
+      }
+    },
+    "ppo": {
+      "success_rate": {
+        "mean": 0.8326666666666668,
+        "std": 0.023328570942563562
+      },
+      "collision_rate": {
+        "mean": 0.0006666666666666666,
+        "std": 0.0004714045207910317
+      },
+      "timeout_rate": {
+        "mean": 0.16666666666666666,
+        "std": 0.022939534045447
+      },
+      "median_final_mm": {
+        "mean": 25.777780754070942,
+        "std": 0.2706693326420164
+      }
+    },
+    "ik": {
+      "success_rate": 0.584,
+      "collision_rate": 0.032,
+      "timeout_rate": 0.384,
+      "median_final_mm": 25.963831632138877,
+      "mean_time_to_reach_s": 2.48013698630137,
+      "collisions_by_zone": {
+        "bag": 19,
+        "head": 3,
+        "torso": 7,
+        "shoulders": 3
+      },
+      "n": 1000
+    },
+    "random": {
+      "success_rate": 0.001,
+      "collision_rate": 0.015,
+      "timeout_rate": 0.984,
+      "median_final_mm": 937.5689393611194,
+      "mean_time_to_reach_s": 2.3000000000000003,
+      "collisions_by_zone": {
+        "head": 9,
+        "torso": 4,
+        "bag": 2
+      },
+      "n": 1000
+    }
+  }
+}
