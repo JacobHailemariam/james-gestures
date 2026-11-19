@@ -14,9 +14,10 @@
 <h3 align="center">An extra arm you wear on your back, steered by your hand and your voice.</h3>
 
 > **Built at [Cal Hacks 13.0](https://cal-hacks-13-0.devpost.com/), an MLH hackathon** in San Francisco,
-> October 23 to 25, 2026, by a team of three. Everything here was written that weekend (the vision and voice
-> pipeline, the controller, the Arduino firmware, the simulator and the test suite), on top of two open-source
-> (MIT) gesture modules vendored from the JAMES project.
+> October 23 to 25, 2026, by a team of three. The vision and voice pipeline, the controller, the Arduino firmware, the
+> simulator and the test suite were written that weekend, on top of two open-source (MIT) gesture modules
+> vendored from the JAMES project. Afterwards (November 2026) I added the wearer to the simulator and a
+> [PPO reaching policy](#reinforcement-learning-reaching-around-the-wearer) trained in it.
 
 **Atlas** (Assistive Third Limb for Augmented Strength) is a 4-joint robotic arm with a geared claw, mounted on a
 backpack. The idea came from Doctor Octopus's arms in *Spider-Man 2*: an extra limb on your back that works
@@ -66,7 +67,7 @@ classifier reads; the yellow bar is the joystick speed. Peace drives the elbow u
 <p align="center"><img src="media/atlas-gestures.gif" alt="Gestures driving the arm: the real gesture reader and arm controller, fed synthetic hands" width="100%"></p>
 <p align="center"><sub>What step 2 looks like, rendered from the real <code>GestureReader</code> and <code>ArmController</code>. Every number and serial line shown is what the code produced.</sub></p>
 
-No camera handy? `python -m pytest -q` runs all 81 tests with synthetic hands and a headless simulator, and
+No camera handy? `python -m pytest -q` runs all 93 tests with synthetic hands and a headless simulator, and
 `python tools/render_sim.py --gif` redraws the pictures above. With the arm connected, swap `--sim` for
 `--port COM3` (or both, to watch the sim mirror the real arm). Every flag, the wiring and troubleshooting are in
 [`docs/ENGINEERING.md`](docs/ENGINEERING.md).
@@ -84,7 +85,8 @@ Linux or WSL.</sub>
 | **Voice false alarms** | 6.6 per minute in a 2,000-person hall, **0 in 100 s** with the wake word |
 | **Reaction time** | STOP 0.37 s after a fist; arming needs a deliberate 1 s open palm, 0 false arms |
 | **Perception cost** | 17 ms per frame for MediaPipe on a laptop CPU, so 30 fps end to end |
-| **Tests** | 81 unit and integration tests, run in CI on every push |
+| **PPO reaching policy** | **83%** of 1,000 targets near the wearer reached vs 58% for an IK controller; contact with the wearer **0.07%** vs 3.2% (3 seeds) |
+| **Tests** | 93 unit and integration tests, run in CI on every push |
 
 ## How it works
 
@@ -101,6 +103,7 @@ flowchart LR
     fw --> pca["PCA9685"] --> servos["shoulder, elbow, wrist,<br/>2 claw servos"]
     fw --> tb["TB6600"] --> nema["NEMA 17 base"]
     ctl -.->|"same protocol"| sim["MuJoCo simulator"]
+    ppo["PPO reaching policy<br/>keep-out shield"] -.->|"joint targets"| ctl
 ```
 
 Five layers, each testable on its own. The laptop does perception and decisions; the board only executes a
@@ -114,6 +117,7 @@ seven-command text protocol, so the simulator can stand in for it unchanged.
 | Control | Gestures and voice to safe joint targets; presets; the serial link | [`arm.py`](james_gestures/arm.py) |
 | Firmware | Commands to PWM pulses and stepper steps on the Arduino UNO Q | [`arm_receiver_unoq.ino`](firmware/arm_receiver_unoq/arm_receiver_unoq.ino) |
 | Simulation | MuJoCo model of the arm on the backpack, plus a pose solver | [`sim.py`](james_gestures/sim.py), [`arm.xml`](sim/arm.xml), [`solve_poses.py`](tools/solve_poses.py) |
+| Reinforcement learning | PPO reaching policy trained in the simulator, deployed through the controller | [`rl/`](rl/), [`train_ppo.py`](tools/train_ppo.py), [`eval_ppo.py`](tools/eval_ppo.py) |
 
 ## The machine learning
 
@@ -224,9 +228,53 @@ lengths read from the team's SolidWorks export in [`cad/`](cad/). The simulator 
 presets ("james left shoulder", "james right hip") by searching joint space for a pose that puts the fingertip on a
 target without any link passing through the bag.
 
+## Reinforcement learning: reaching around the wearer
+
+<p align="center"><img src="media/ppo-reach.gif" alt="The PPO policy steering the simulated arm to targets near the wearer's head and hips" width="55%"></p>
+<p align="center"><sub>The trained policy driving the arm through the real <code>ArmController</code> to the first five
+near-body targets of a fixed seed (not hand-picked). The yellow ball is the target.</sub></p>
+
+Atlas works inches from its wearer's head. Once the simulator had a wearer in it, a check showed the
+hand-solved shoulder presets pass within about 2 mm of the head model. So I trained a reaching policy whose
+job is to put the claw on a point **without** touching the person. [`rl/`](rl/) holds the whole thing:
+
+- **PPO written from scratch in PyTorch** ([`rl/ppo.py`](rl/ppo.py)): clipped surrogate objective, GAE(λ = 0.95),
+  value clipping, advantage and running observation normalisation, linear learning-rate decay.
+- **An environment with the real arm's limits** ([`rl/env.py`](rl/env.py)): one action every 0.1 s (the controller's
+  10 Hz send rate), each joint capped at its real deg/s and joint range, kinematics from the same MuJoCo model.
+  Keep-out zones: the backpack + 2 cm, the wearer's torso, shoulders and arms + 2 cm, the head + 5 cm.
+  Touching one ends the episode with a penalty. Half the training targets hug the body.
+- **Deployed through the normal path** ([`rl/deploy.py`](rl/deploy.py), [`tools/reach.py`](tools/reach.py)): policy
+  → keep-out shield (any proposed pose inside a zone is never sent) → `ArmController.goto()` (limits, rate caps)
+  → `J <joint> <deg>` lines → the simulator or the board, whose firmware slews at 60 deg/s on top.
+
+<p align="center"><img src="media/fig-ppo.png" alt="PPO training curves over 3 seeds, and evaluation against an IK controller and random actions" width="100%"></p>
+
+Evaluated on 1,000 fixed tasks per set, against a damped-least-squares IK controller with the same speed caps
+(the textbook way to reach a point) and random actions ([`docs/data/ppo_eval.json`](docs/data/ppo_eval.json)):
+
+| | PPO, 3 seeds | IK controller | Random |
+|:--|:--:|:--:|:--:|
+| **Near the wearer:** reached within 3 cm | **83.3% ± 2.3%** | 58.4% | 0.1% |
+| **Near the wearer:** touched wearer or bag | **0.07%** (2 in 3,000) | 3.2% (32 in 1,000) | 1.5% |
+| **Near the wearer:** mean time to reach | **1.8 s** | 2.5 s | |
+| **Open space:** reached within 3 cm | 66.6% ± 1.6% | **82.1%** | 1.9% |
+| **Open space:** touched wearer or bag | **0.10%** | 0.50% | 1.9% |
+
+Near the body, where it matters, the policy reaches 25 points more often and touches the wearer about 48 times
+less. In open space the IK controller is more precise: the policy's median miss is 28 mm against a 30 mm
+success radius. The natural next step is to hand over to IK for the last few centimetres when nothing is near.
+
+```bash
+pip install -r requirements-rl.txt
+python tools/train_ppo.py --seed 0          # 2M steps, about 30 min on a laptop CPU
+python tools/eval_ppo.py                    # the table above
+python tools/reach.py --sim --near 3        # watch the policy in the MuJoCo viewer (add --port COM3 for the arm)
+```
+
 ## Engineering practice
 
-- **81 tests** with synthetic hands, a fake serial port, a fake microphone and a headless simulator, so the whole
+- **93 tests** with synthetic hands, a fake serial port, a fake microphone and a headless simulator, so the whole
   pipeline is tested without a camera or an arm. CI runs them on Python 3.11 and 3.12.
 - **Measurement tools** for each risky assumption: [`eval_gestures.py`](tools/eval_gestures.py),
   [`eval_voice.py`](tools/eval_voice.py), [`tune_hands.py`](tools/tune_hands.py), and
@@ -249,8 +297,9 @@ james_gestures/      the Python package
 demo.py              the app: camera window, HUD, voice, keys
 firmware/            UNO Q receiver and a one-at-a-time hardware check
 sim/, cad/           MuJoCo model and the SolidWorks assembly
+rl/                  PPO: reaching environment, PPO, deployment, trained policy
 tools/               evaluation, tuning, pose solving, flashing, figures
-tests/               81 tests
+tests/               93 tests
 docs/                engineering notes, issue log, a debugging write-up, measured data
 ```
 
@@ -261,6 +310,8 @@ docs/                engineering notes, issue log, a debugging write-up, measure
 - **Bare voice commands fail in a crowd.** Confidence scores don't help when noise scores 0.9; a wake word does.
 - **Hardware fails silently.** A power dip resets a PWM chip that still answers on I2C. Every layer now reports
   its own health instead of assuming it.
+- **Learned control isn't automatically better.** In open space a 20-line IK controller beat PPO; the policy
+  earned its place only near the body, where IK drives straight through the wearer. Measure against a baseline.
 - **Our first arm design couldn't hold its motors.** We redesigned around the real joint torques and reprinted.
 
 ## Who built what
@@ -280,7 +331,9 @@ docs/                engineering notes, issue log, a debugging write-up, measure
 - **Perception**: the background-hand filter, and the real-webcam hand logger and tuning report that measured
   879 frames at 100%.
 - **Simulation**: the MuJoCo model of the arm on the backpack, link lengths from the CAD, and the pose solver.
-- **Tooling and tests**: the gesture robustness sweep, flashing over adb, the README figures, CI, and the 81
+- **Reinforcement learning**: the reaching environment with keep-out zones, PPO in PyTorch, the evaluation
+  against IK, and deployment through the controller with a runtime shield.
+- **Tooling and tests**: the gesture robustness sweep, flashing over adb, the README figures, CI, and the 93
   tests.
 - **Wiring and bring-up** of the PCA9685, the TB6600 and the UNO Q on the real arm.
 
