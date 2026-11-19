@@ -60,7 +60,7 @@ Two windows open: your webcam, with the hand skeleton and the recognised gesture
 <p align="center"><img src="media/camera-gestures.jpg" alt="The demo's camera window recognising each of the five gestures on a real hand" width="100%"></p>
 <p align="center"><sub>The camera window on a real webcam, one screenshot per gesture (press <code>p</code> in the demo to save one).
 The header shows the arm's state and the recognised gesture; the top line shows the four finger ratios the
-classifier reads; the yellow bar is the joystick speed.</sub></p>
+classifier reads; the yellow bar is the joystick speed. Peace drives the elbow up/down and the wrist left/right.</sub></p>
 
 <p align="center"><img src="media/atlas-gestures.gif" alt="Gestures driving the arm: the real gesture reader and arm controller, fed synthetic hands" width="100%"></p>
 <p align="center"><sub>What step 2 looks like, rendered from the real <code>GestureReader</code> and <code>ArmController</code>. Every number and serial line shown is what the code produced.</sub></p>
@@ -181,7 +181,7 @@ within 2 s, shows **VOICE DOWN** and reopens the mic.
 |:--|:--|
 | ✋ **Open palm**, held 1 s | Arms. It is also the "hold still" pose |
 | ☝️ **Point** and move | Left/right turns the **base**, up/down lifts the **shoulder** |
-| ✌️ **Peace sign** and move | Up/down bends the **elbow** |
+| ✌️ **Peace sign** and move | Up/down bends the **elbow**, left/right turns the **wrist** |
 | 🤏 **Pinch** / release | The **claw** closes / opens |
 | ✊ **Fist** | **STOP**: everything freezes and disarms |
 | 🗣️ "**james** home / raise / grab / left shoulder / stop" | Voice presets and commands |

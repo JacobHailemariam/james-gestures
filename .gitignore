@@ -4,3 +4,4 @@ __pycache__/
 
 # demo screenshots (press p in demo.py)
 snap-*.png
+old-snaps/
