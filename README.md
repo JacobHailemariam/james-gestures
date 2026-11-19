@@ -1,4 +1,4 @@
-<p align="center"><img src="media/hero.jpg" alt="Atlas: a gesture-controlled robotic arm worn on a backpack" width="100%"></p>
+<p align="center"><img src="media/hero.jpg" alt="Atlas: the arm worn on a backpack in the Cal Hacks hall, and the arm on its backpack on the build table" width="100%"></p>
 
 <p align="center">
 <a href="https://mlh.io"><img alt="Built at an MLH hackathon" src="https://img.shields.io/badge/MLH-Cal%20Hacks%2013.0-e8382b?style=flat-square&labelColor=17130f"></a>
@@ -283,12 +283,17 @@ docs/                engineering notes, issue log, a debugging write-up, measure
   tests.
 - **Wiring and bring-up** of the PCA9685, the TB6600 and the UNO Q on the real arm.
 
+**Victor Espinoza** designed the arm: the CAD and the SolidWorks assembly in [`cad/`](cad/), which the
+simulator's link lengths come from, and the choice of motors.
+
+**Semir Haji** built it: the 3D printing and the mechanical assembly of the arm.
+
 ## Team
 
 | | |
 |:--|:--|
+| **Jacob Hailemariam** · University of Calgary | Software, embedded firmware, electronics, simulation, tests |
 | **Victor Espinoza** · UC Davis | Arm design, CAD, motors |
-| **Jacob Hailemariam** · University of Calgary | Embedded, firmware, control software |
 | **Semir Haji** · University of Calgary | Mechanical build, printing |
 
 ---
