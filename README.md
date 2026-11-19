@@ -59,7 +59,7 @@ Two windows open: your webcam, with the hand skeleton and the recognised gesture
    bends the elbow; **pinch** closes the claw; a **fist** stops everything.
 3. **Keys**, if you have no mic: `h` home, `r` raise, `e` reach, `t` tuck, `f` follow, `space` stop, `q` quit.
 
-<p align="center"><img src="media/camera-gestures.jpg" alt="The demo's camera window recognising each of the five gestures on a real hand" width="100%"></p>
+<p align="center"><img src="media/webcam-gestures.jpg" alt="The demo's camera window recognising each of the five gestures on a real hand" width="100%"></p>
 <p align="center"><sub>The camera window on a real webcam, one screenshot per gesture (press <code>p</code> in the demo to save one).
 The header shows the arm's state and the recognised gesture; the top line shows the four finger ratios the
 classifier reads; the yellow bar is the joystick speed. Peace drives the elbow up/down and the wrist left/right.</sub></p>
