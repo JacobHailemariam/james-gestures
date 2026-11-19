@@ -1,75 +1,232 @@
 <p align="center"><img src="media/hero.jpg" alt="Atlas: a gesture-controlled robotic arm worn on a backpack" width="100%"></p>
 
 <p align="center">
-<img alt="Cal Hacks 13.0" src="https://img.shields.io/badge/Cal%20Hacks-13.0-e8382b?style=flat-square&labelColor=17130f">
-<img alt="Hardware hack" src="https://img.shields.io/badge/track-hardware-5b58a6?style=flat-square&labelColor=17130f">
-<img alt="Python" src="https://img.shields.io/badge/python-3.10+-f4b42a?style=flat-square&labelColor=17130f">
+<a href="https://mlh.io"><img alt="Built at an MLH hackathon" src="https://img.shields.io/badge/MLH-Cal%20Hacks%2013.0-e8382b?style=flat-square&labelColor=17130f"></a>
+<a href="https://github.com/JacobHailemariam/james-gestures/actions/workflows/tests.yml"><img alt="tests" src="https://github.com/JacobHailemariam/james-gestures/actions/workflows/tests.yml/badge.svg"></a>
+<img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-f4b42a?style=flat-square&labelColor=17130f">
 <img alt="MediaPipe" src="https://img.shields.io/badge/vision-MediaPipe-ff4f7b?style=flat-square&labelColor=17130f">
+<img alt="Vosk" src="https://img.shields.io/badge/voice-Vosk%20(offline)-5b58a6?style=flat-square&labelColor=17130f">
 <img alt="Arduino UNO Q" src="https://img.shields.io/badge/board-Arduino%20UNO%20Q-e8382b?style=flat-square&labelColor=17130f">
-<img alt="tests" src="https://img.shields.io/badge/tests-81%20passing-5b58a6?style=flat-square&labelColor=17130f">
+<img alt="MuJoCo" src="https://img.shields.io/badge/sim-MuJoCo-5b58a6?style=flat-square&labelColor=17130f">
 <img alt="MIT" src="https://img.shields.io/badge/license-MIT-f3ecdd?style=flat-square&labelColor=17130f">
 </p>
 
-<h3 align="center">Carrying the weight of the world? Atlas takes some of it off your shoulders.</h3>
+<h3 align="center">An extra arm you wear on your back, steered by your hand and your voice.</h3>
 
-**Atlas** is an extra arm you wear on your back. A webcam watches your hand, and a few simple gestures steer
-the arm one joint at a time: point to turn and lift, make a peace sign to bend the elbow, pinch to close the
-claw, make a fist to stop everything. Say "james" and a word and it listens too. No joystick, no
-body-worn sensors, nothing to learn.
+> **Built at [Cal Hacks 13.0](https://cal-hacks-13-0.devpost.com/), an MLH hackathon** in San Francisco,
+> October 23 to 25, 2026, by a team of four. Everything here was written that weekend (the vision and voice
+> pipeline, the controller, the Arduino firmware, the simulator and the test suite), on top of two modules from
+> our teammate's earlier JAMES gesture project.
 
-We built it for people who need a hand they don't have: someone recovering from an injury or living with
-limited mobility, and anyone whose job asks their shoulders and back to lift all day.
+**Atlas** (Assistive Third Limb for Augmented Strength) is a 4-joint robotic arm with a geared claw, mounted on a
+backpack. A laptop webcam watches one hand and a microphone listens for a wake word. No joystick, no gloves, no
+body-worn sensors. It is for people who need a hand they don't have: someone recovering from an injury or living
+with limited mobility, or anyone whose job asks their shoulders to lift all day.
 
 <p align="center"><img src="media/atlas-gestures.gif" alt="Gestures driving the arm: the real gesture reader and arm controller, fed synthetic hands" width="100%"></p>
-<p align="center"><sub>Rendered from the real <code>GestureReader</code> and <code>ArmController</code>, fed synthetic hands. Every number and every serial line on the right is what the code produced.</sub></p>
+<p align="center"><sub>Rendered from the real <code>GestureReader</code> and <code>ArmController</code>. Every number and serial line shown is what the code produced.</sub></p>
 
-## Drive it
+## At a glance
+
+| | |
+|:--|:--|
+| **Gesture recognition, real webcam** | 5 gestures, 879 labelled frames, **100%** recognised ([data](docs/data/hands_webcam.csv)) |
+| **Robustness sweep** | 27 hand placements x 7 noise levels: 100% for every pose up to 4% landmark jitter |
+| **Voice false alarms** | 6.6 per minute in a 2,000-person hall, **0 in 100 s** with the wake word |
+| **Reaction time** | STOP 0.37 s after a fist; arming needs a deliberate 1 s open palm, 0 false arms |
+| **Perception cost** | 17 ms per frame for MediaPipe on a laptop CPU, so 30 fps end to end |
+| **Tests** | 81 unit and integration tests, run in CI on every push |
+
+## How it works
+
+```mermaid
+flowchart LR
+    cam["Webcam, 30 fps"] --> mp["MediaPipe Hand Landmarker<br/>21 landmarks per hand"]
+    mp --> oe["1-euro filter<br/>adaptive smoothing"]
+    oe --> pose["Pose classifier<br/>finger ratios, hysteresis,<br/>confirm windows"]
+    pose --> ctl["ArmController<br/>joystick, joint limits,<br/>deg/s rate caps"]
+    mic["Microphone"] --> vosk["Vosk, grammar-constrained<br/>wake word: james"]
+    vosk --> ctl
+    ctl -->|"text protocol, max 10 Hz per joint"| link["SerialLink<br/>PING/PONG, auto-reconnect"]
+    link -->|"USB-C to Linux, RPC bridge"| fw["STM32 firmware<br/>60 deg/s slew, PCA9685 watchdog"]
+    fw --> pca["PCA9685"] --> servos["shoulder, elbow, wrist,<br/>2 claw servos"]
+    fw --> tb["TB6600"] --> nema["NEMA 17 base"]
+    ctl -.->|"same protocol"| sim["MuJoCo simulator"]
+```
+
+Five layers, each testable on its own. The laptop does perception and decisions; the board only executes a
+seven-command text protocol, so the simulator can stand in for it unchanged.
+
+| Layer | What it does | Code |
+|:--|:--|:--|
+| Perception | Webcam frame to the driving hand's 21 landmarks; ignores bystanders' hands | [`tracker.py`](james_gestures/tracker.py) |
+| Gesture ML | Landmarks to smoothed, confirmed gestures | [`handpose.py`](james_gestures/handpose.py), [`motion.py`](james_gestures/motion.py), [`gestures.py`](james_gestures/gestures.py) |
+| Voice | Offline speech to commands, with a wake word and a health monitor | [`voice.py`](james_gestures/voice.py) |
+| Control | Gestures and voice to safe joint targets; presets; the serial link | [`arm.py`](james_gestures/arm.py) |
+| Firmware | Commands to PWM pulses and stepper steps on the Arduino UNO Q | [`arm_receiver_unoq.ino`](firmware/arm_receiver_unoq/arm_receiver_unoq.ino) |
+| Simulation | MuJoCo model of the arm on the backpack, plus a pose solver | [`sim.py`](james_gestures/sim.py), [`arm.xml`](sim/arm.xml), [`solve_poses.py`](tools/solve_poses.py) |
+
+## The machine learning
+
+### From pixels to poses
+
+<p align="center"><img src="media/fig-landmarks.png" alt="Five hand poses as 21 landmarks with their finger ratios" width="100%"></p>
+
+A pretrained neural network, Google's **MediaPipe Hand Landmarker**, turns each frame into 21 landmarks. On top of
+that sits a small, deliberate feature model rather than a second trained classifier:
+
+- **Scale-free features.** Each finger is one number: wrist-to-tip distance over wrist-to-knuckle distance. About
+  1.9 when straight, about 0.8 when folded, and the same whether the hand is 40 cm or 2 m from the camera.
+- **Hysteresis.** A finger turns "up" above 1.50 but only turns back "down" below 1.38, so a ratio hovering near
+  one threshold can't flicker between poses.
+- **Confirm windows.** A pose must be seen for 50 to 150 ms before it counts, so one noisy frame changes nothing.
+- **Context rules.** A pinch that starts inside a fist is not a pinch, so closing your hand never fires the claw.
+
+Why not train a classifier? With a weekend and no labelled dataset, a geometric model was the honest choice: it
+needs no training data, it is deterministic and debuggable, every threshold is a named constant, and it can be
+unit-tested with synthetic hands. The real-webcam measurement below is what justified keeping it.
+
+### Measured on a real hand
+
+<p align="center"><img src="media/fig-real-ratios.png" alt="Measured finger ratios from a real webcam against the classifier thresholds" width="100%"></p>
+
+Recorded with `demo.py --log` and summarised by [`tools/tune_hands.py`](tools/tune_hands.py): every finger of every
+gesture lands well clear of its threshold, and all 879 labelled frames were classified correctly. The tightest
+margin, the pinching index finger against the fist rule, is still about 0.3.
+
+### Stress-tested before it touched hardware
+
+[`tools/eval_gestures.py`](tools/eval_gestures.py) feeds synthetic hands through the real reader and controller:
+3 hand sizes x 3 positions x 3 rotations, with Gaussian landmark jitter from 0 to 25% of palm size, both white and
+slowly drifting.
+
+| Landmark jitter | open | point | peace | pinch | fist | false ARM | STOP latency |
+|:--|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
+| 0 to 4% | 100% | 100% | 100% | 100% | 100% | 0 | 0.37 s |
+| 8% | 100% | 100% | 100% | 87.7% | 100% | 0 | 0.37 s |
+
+The sweep earned its keep: it found that one noisy frame during a held pinch could release the claw and drop
+whatever it held, in **16 of 27** trials under slow drift. The controller now opens the claw only when the
+thumb-index gap really widens, and the same sweep measures **0 of 27**.
+
+### Smoothing that doesn't lag
+
+<p align="center"><img src="media/fig-one-euro.png" alt="1-euro filter on a jittery fingertip track" width="100%"></p>
+
+Raw landmarks shake by a few pixels even on a still hand. A fixed low-pass filter would trade that jitter for lag.
+The **1-euro filter** (Casiez, Roussel and Vogel, CHI 2012) adapts its cutoff to speed: heavy smoothing at rest,
+almost none in a fast move.
+
+### Voice in a 2,000-person hall
+
+<p align="center"><img src="media/fig-wake-word.png" alt="False voice commands per minute, with and without the wake word" width="80%"></p>
+
+Speech runs offline with **Vosk**, constrained to a grammar of 27 command phrases plus the wake word. The first measurement in the hall was 6.6
+false commands per minute, at confidence 0.8 to 1.0, so raising a threshold could not fix it. Requiring the wake
+word "james" took it to zero. "james stop" acts mid-sentence, but only after two consecutive partial results agree,
+because single-partial "stops" were the most common noise artifact. If the mic stream dies, a health check notices
+within 2 s, shows **VOICE DOWN** and reopens the mic.
+
+## Control and safety
 
 | You do | Atlas does |
 |:--|:--|
 | ✋ **Open palm**, held 1 s | Arms. It is also the "hold still" pose |
-| ☝️ **Point** and move your hand | Left / right turns the **base**, up / down lifts the **shoulder** |
-| ✌️ **Peace sign** and move | Up / down bends the **elbow** |
+| ☝️ **Point** and move | Left/right turns the **base**, up/down lifts the **shoulder** |
+| ✌️ **Peace sign** and move | Up/down bends the **elbow** |
 | 🤏 **Pinch** / release | The **claw** closes / opens |
 | ✊ **Fist** | **STOP**: everything freezes and disarms |
-| 🗣️ "**james** home / raise / grab / stop" | Voice, offline. Nothing counts without the wake word |
+| 🗣️ "**james** home / raise / grab / left shoulder / stop" | Voice presets and commands |
 
-It works like a joystick, not a mirror: where you start pointing is zero, and how far you move from it sets
-the speed. A jittery hand can't snap a joint, because every target is clamped to its limits and speed-capped,
-and the board slews every servo at 60°/s on top of that.
+Steering works like a joystick, not a mirror: where you start pointing is zero and the offset sets the speed, so a
+lean or a tremor can't snap a joint. Safety is layered on both sides of the cable:
 
-## The build
+- **Laptop:** joint limits and per-joint deg/s caps; the stick locks to one axis per move and times out after 3 s;
+  losing sight of the hand for 2 s disarms.
+- **Firmware:** every servo slews at most 60 deg/s; servos power up one at a time so their inrush can't brown out
+  the board; a watchdog re-initialises the PWM chip if a power dip reset it; the stepper driver is enabled only
+  while the base moves.
+- **Link:** the laptop PINGs on connect, notices a dropped or rebooted board, disarms, and reconnects by itself.
 
-<p align="center"><img src="media/build.jpg" alt="The arm, the claw, the backpack mount and the live gesture HUD" width="100%"></p>
+## Embedded: the other half of the stack
 
-| Part | What we used |
-|:--|:--|
-| **Base** | NEMA 17 stepper on a TB6600 driver, turntable printed in PLA |
-| **Shoulder** | ANNIMOS RDS5160SG, 60 kg·cm servo (red link) |
-| **Elbow, wrist** | ANNIMOS RDS3225SG, 25 kg·cm servos (violet links) |
-| **Claw** | Two 9 g servos driving geared jaws (pink) |
-| **Brain** | Arduino UNO Q, PCA9685 16-channel PWM board |
-| **Mount** | A backpack, so the arm rides on your back |
-| **Design** | SolidWorks CAD, 3D printed; joint torque sized the motors and link lengths |
-| **Software** | Python, MediaPipe, OpenCV, Vosk, MuJoCo sim, JAMES gesture stack |
+The Arduino UNO Q has two processors: a Linux SoC that owns the USB port and an STM32 microcontroller that drives
+the motors. Commands travel laptop to Linux to an RPC bridge to the MCU. Two consequences shaped the design:
 
-<p align="center"><img src="media/how-it-works.jpg" alt="Webcam, JAMES gestures, arm controller, Arduino UNO Q, plus offline voice" width="100%"></p>
+- **Bandwidth is precious.** Sending a position every camera frame made the arm lag by seconds as the bridge
+  backed up. The controller now sends each joint at most 10 times per second, always ending on the exact
+  target, and the firmware's slew interpolates between updates.
+- **Failures are silent by default.** A board that reboots, or a PWM chip that resets on a power dip, still
+  looks healthy over the wire. Both are now detected and reported on the HUD.
+
+The protocol is deliberately tiny, so anything that speaks it can drive the arm:
+
+```
+PING -> PONG | ARM 1 | ARM 0 | STOP | J <base|shoulder|elbow|wrist> <deg> | CLAW 1 | CLAW 0
+```
+
+[`tools/flash_unoq.py`](tools/flash_unoq.py) pushes the sketch to the board over adb, restarts it and waits for PONG.
+
+## Simulation and kinematics
+
+The MuJoCo model in [`sim/arm.xml`](sim/arm.xml) puts the arm on a model of our backpack, with link lengths read
+from the team's SolidWorks export in [`cad/`](cad/). The simulator speaks the same protocol as the board, so
+`demo.py --sim` drives it with no hardware. [`tools/solve_poses.py`](tools/solve_poses.py) computes the voice
+presets ("james left shoulder", "james right hip") by searching joint space for a pose that puts the fingertip on a
+target without any link passing through the bag.
+
+## Engineering practice
+
+- **81 tests** with synthetic hands, a fake serial port, a fake microphone and a headless simulator, so the whole
+  pipeline is tested without a camera or an arm. CI runs them on Python 3.11 and 3.12.
+- **Measurement tools** for each risky assumption: [`eval_gestures.py`](tools/eval_gestures.py),
+  [`eval_voice.py`](tools/eval_voice.py), [`tune_hands.py`](tools/tune_hands.py), and
+  [`make_readme_figures.py`](tools/make_readme_figures.py), which draws every figure here from the code and data.
+- **Remote collaboration, 12.5 hours apart.** Our gesture lead worked from Hyderabad with no hardware. We
+  worked through a written issue log ([`docs/ISSUES.md`](docs/ISSUES.md)), reproducible bug reports and patch
+  series ([`docs/NOTHING_MOVES.md`](docs/NOTHING_MOVES.md) is one end to end).
+
+## Try it without hardware
+
+```bash
+git clone https://github.com/JacobHailemariam/james-gestures.git
+cd james-gestures
+python -m venv .venv && source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements.txt -r requirements-voice.txt mujoco
+python -m pytest -q                                      # 81 tests, no camera needed
+python demo.py --sim --voice                             # your webcam and mic drive the 3D arm
+```
+
+With the board connected: `python demo.py --port COM3 --voice`. Every flag, the wiring, troubleshooting and tuning
+are in [`docs/ENGINEERING.md`](docs/ENGINEERING.md).
+
+## Repository map
+
+```
+james_gestures/      the Python package
+  tracker.py           MediaPipe wrapper, picks the driving hand
+  handpose.py          finger ratios, pose classifier with hysteresis    (from JAMES)
+  motion.py            1-euro filter, swipe and trail helpers           (from JAMES)
+  gestures.py          one GestureFrame per camera frame
+  arm.py               ArmController, presets, SerialLink
+  voice.py             offline voice with wake word and health checks
+  sim.py               MuJoCo stand-in for the board
+demo.py              the app: camera window, HUD, voice, keys
+firmware/            UNO Q receiver and a one-at-a-time hardware check
+sim/, cad/           MuJoCo model and the SolidWorks assembly
+tools/               evaluation, tuning, pose solving, flashing, figures
+tests/               81 tests
+docs/                engineering notes, issue log, a debugging write-up, measured data
+```
 
 ## What we learned the hard way
 
-- **Our first design looked great and couldn't hold its motors.** We scrapped it and redesigned around the
-  real torques, then reprinted.
-- **Bare voice commands fail in a hackathon hall.** We measured 6.6 false commands a minute from crowd noise.
-  Requiring the wake word "james" took that to 0 in 100 seconds.
-- **Sending every camera frame to the board made the arm lag by seconds.** Capping joint updates at 10 per
-  second per joint fixed it.
-- **The board reset whenever the motors drew power.** The real fix is electrical (motors on their own supply),
-  and the software already notices a reboot, disarms the arm and reconnects by itself.
-
-## What's next
-
-EMG muscle-signal control, a proper back harness with onboard power, force sensing, lighter and stronger
-materials, and testing with physical therapists and real users.
+- **Synthetic tests are not real hands.** Our first real-webcam log looked like 17 to 56% accuracy. The logger
+  showed it was mislabelled transitions, not the classifier, and a clean run was 100%. Measure before tuning.
+- **Bare voice commands fail in a crowd.** Confidence scores don't help when noise scores 0.9; a wake word does.
+- **Hardware fails silently.** A power dip resets a PWM chip that still answers on I2C. Every layer now reports
+  its own health instead of assuming it.
+- **Our first arm design couldn't hold its motors.** We redesigned around the real joint torques and reprinted.
 
 ## Team
 
@@ -82,195 +239,6 @@ materials, and testing with physical therapists and real users.
 
 ---
 
-<details>
-<summary><b>Engineering notes</b>: how to run it, every flag, wiring, protocol, troubleshooting</summary>
-
-```
-webcam -> MediaPipe (21 hand points) -> GestureReader -> ArmController -> serial -> arm_receiver_unoq.ino -> motors
-mic    -> Vosk (offline)             -> VoiceListener  ---^
-```
-
-## Run it (Windows, 5 minutes)
-
-```bat
-python -m venv .venv
-.venv\Scripts\pip.exe install -r requirements.txt
-.venv\Scripts\pip.exe install -r requirements-voice.txt     :: only if you want --voice
-.venv\Scripts\python.exe -m pytest -q tests                  :: 35 tests, synthetic hands, no camera or mic
-.venv\Scripts\python.exe demo.py                             :: dry run: prints commands, nothing moves
-.venv\Scripts\python.exe check_board.py COM3                 :: sends PING, expects PONG, moves nothing
-.venv\Scripts\python.exe demo.py --port COM3 --camera 1 --voice
-```
-
-Mac / Linux: `python3 -m venv .venv && source .venv/bin/activate`, then the same commands with `python`.
-The port is `/dev/tty.usbmodemXXXX` on Mac, usually `/dev/ttyACM0` on Linux.
-
-`hand_landmarker.task` (Google's MediaPipe hand model) is in the repo, nothing to download for the camera side.
-
-### demo.py flags
-
-| Flag | What it does |
-|---|---|
-| `--port COM3` | serial port of the board. Omit for a dry run that only prints commands |
-| `--baud 115200` | serial speed (default 115200) |
-| `--camera 1` | which webcam (default 0) |
-| `--model hand_landmarker.task` | path to the MediaPipe hand model |
-| `--voice` | also listen for voice commands (offline, Vosk) |
-| `--vosk-model <folder>` | an unzipped Vosk model folder. Default: auto-download the small English model |
-| `--mic 2` | microphone device number (default: system default) |
-| `--no-pinch-claw` | pinch does nothing; the claw is voice-only |
-| `--sim` | drive a MuJoCo model of the arm (`pip install mujoco`). With `--port` too, the sim shows what the real arm was told |
-| `--speed 2` | multiply every joint's max speed |
-| `--min-hand 0.05` | hands smaller than this fraction of the frame height (people in the background) never drive; 0 = off |
-| `--log hands.csv` | record finger ratios per frame; keys 1-5 label the gesture you hold. Summarise with `tools/tune_hands.py hands.csv` |
-
-Keys in the demo window: `q` quit, `space` STOP, `h` `r` `e` `t` presets home / raise / reach / tuck,
-`f` follow (hand steers again after a preset).
-
-## Gestures
-
-The arm always starts disarmed. While armed, steering is a joystick that drives one joint at a time:
-where you start pointing is the zero, and how far your fingertip is from that zero sets the speed.
-
-| Gesture | Arm does |
-|---|---|
-| Open palm, held 1 s | **ARM**: motion enabled (also the idle pose: nothing moves) |
-| Fist, held 0.3 s | **STOP**: freeze and disarm (soft kill switch) |
-| **Point** (1 finger) and move | left/right = **base**, up/down = **shoulder** |
-| **Peace** (2 fingers) and move | left/right = **wrist**, up/down = **elbow** |
-| Un-point (back to open palm) | that joint stops; pointing again sets a new zero |
-| Pinch / release | claw close / open |
-| Hand leaves camera | holds still, disarms after 2 s |
-
-Details: the dead zone is 4 % of the frame, full speed at 20 %, and only the larger of the two axes moves.
-Hand position is never mapped straight to an angle, so a lean or a jitter can't move the arm.
-Only the largest hand in view (closest to the camera) drives; other hands are drawn faded and ignored.
-A fist is only a fist when every finger is folded, so a pinch with curled fingers does not trigger STOP.
-
-## Voice
-
-Offline, Vosk small English model. First run with `--voice` downloads it (about 40 MB) into `~/.cache/vosk`,
-or pass `--vosk-model <folder>` with the unzipped model. Needs `requirements-voice.txt` (vosk, sounddevice).
-
-**Say "james" first, then the word**: "james stop", "james grab", "james home". Without the wake word nothing
-happens. Measured in the Cal Hacks hall with nobody talking to the laptop: bare words gave 6.6 false commands
-per minute (noise came back as "release", "raise", "follow", "stop" with confidence 0.8-1.0); with the wake
-word the same 100 s of noise gave 0.
-
-| Say | Command | Also heard as |
-|---|---|---|
-| stop | STOP, works even when disarmed | freeze, halt |
-| grab | claw closes | close, grip |
-| release | claw opens | open, drop, let go |
-| raise | preset: shoulder 150, elbow 120 | lift, up |
-| reach | preset: shoulder 110, elbow 40 | forward |
-| home | preset: all joints to home | reset |
-| tuck | preset: shoulder 30, elbow 150 | rest, down |
-| follow | hand steers again after a preset | resume, move |
-| left shoulder, right shoulder, left hip, right hip | the four demo poses | |
-| save left shoulder (or any pose name) | stores the arm's current angles under that name in `poses.json`, which loads next time | |
-
-The four demo poses ship as placeholders (raise / tuck with the base turned 45 deg) and nobody has measured
-them on the real arm. Steer to the real pose in the sim, say "james save left shoulder", repeat for the other
-three, and commit `poses.json`.
-
-Voice needs no hand in the picture. If the arm is locked, "james home" (or any claw or preset word) arms it
-and goes; "james follow" alone does not. While a hand is driving, losing it for 2 s still disarms; armed by
-voice with no hand yet, it simply waits. A preset pauses hand steering until `follow` (or `f`), so the hand
-can't drag the arm off the pose, and it keeps playing even if the hand leaves view.
-The recogniser only knows these words plus "james"; every word except stop needs a confident match, and
-"james stop" is acted on mid-sentence once it has shown up in two consecutive partial results. A voice `grab` is not undone by the next camera frame, and re-arming never opens the claw.
-
-## Safety built in
-
-- Starts disarmed, both in Python and in the firmware. Nothing moves until a deliberate 1 s open palm.
-- Firmware: all servo outputs are off at power-up and stay off until the first joint command after `ARM 1`.
-  `STOP` / `ARM 0` disable the stepper driver; servos keep their last pulse so the arm holds its pose.
-- Every joint target is clamped to its limits and rate-limited in deg/s (`default_joints()` in `arm.py`),
-  so a tracking glitch can't snap a joint across its range. Presets obey the same clamps and limits.
-
-| Joint | Limits (deg) | Home | Max speed (deg/s) |
-|---|---|---|---|
-| base | 0..270 (so cables can't wrap) | 135 | 45 |
-| shoulder | 20..160 | 90 | 45 |
-| elbow | 20..160 | 90 | 60 |
-| wrist | 0..180 | 90 | 90 |
-
-- **This does not replace a hardware kill switch** on the motor power lines. Wire one and keep a hand on it.
-
-## Hardware (UNO Q)
-
-From `firmware/arm_receiver_unoq/arm_receiver_unoq.ino`. The laptop's USB serial reaches the sketch through
-`Monitor` (Arduino_RouterBridge); the sketch prints `READY` when it starts.
-
-| Part | Wiring |
-|---|---|
-| Servos | PCA9685 16-channel PWM board on I2C at `0x40`, 50 Hz. Shoulder ch 4 (ANNIMOS RDS5160SG 60 kg, 6-8.4 V), elbow ch 0 and wrist ch 1 (ANNIMOS RDS3225SG 25 kg, 5-6.8 V), claw ch 15 (9 g). The ANNIMOS servos sweep 270 deg over 500..2500 us, the claw 180 deg; the firmware converts so that protocol degrees are real degrees with 90 = centre. Servo power from the PCA9685 V+ terminal (own supply), ground shared with the board |
-| Base stepper | TB6600-style driver: PUL D9, DIR D3, ENA D4 (ENA HIGH = disabled). PUL-/DIR-/ENA- to GND. Driver set to 3200 pulses/rev (1/16) |
-| Claw | `CLAW_OPEN = 20`, `CLAW_CLOSED = 95` degrees, tune so closed grips without stalling |
-
-Libraries needed on the board: Adafruit PWM Servo Driver, Adafruit BusIO, Arduino_RouterBridge.
-To flash from this folder: `.venv\Scripts\python.exe tools\flash_unoq.py` (board on USB, App Lab installed once for its adb).
-Base step 0 is wherever the base was at power-on and is taken as 135 deg (`BASE_HOME_DEG`).
-
-## Serial protocol
-
-One command per line, 115200 baud. The board is a dumb executor; anything that speaks these lines works.
-
-```
-PING -> PONG | ARM 1 | ARM 0 | STOP | J <base|shoulder|elbow|wrist> <deg> | CLAW 1 | CLAW 0
-```
-
-`J` and `CLAW` are ignored until `ARM 1`. The board answers `OK ARM`, `OK STOP`, `OK DISARM`.
-
-## What is in here
-
-| File | What it is |
-|---|---|
-| `james_gestures/handpose.py` | From JAMES. Pose tracker (palm / point / pinch / peace) with per-finger hysteresis and confirm times, plus "a pinch that starts in a fist is not a pinch" |
-| `james_gestures/motion.py` | From JAMES. 1-euro smoothing, swipe detection, swept hit test |
-| `james_gestures/gestures.py` | Combines the above into one `GestureFrame` per camera frame |
-| `james_gestures/arm.py` | `ArmController`: gestures and voice -> safe commands. Joint limits, speeds, presets, joystick settings at the top |
-| `james_gestures/voice.py` | `VoiceListener`: offline Vosk, word list, confidence filter, early stop |
-| `james_gestures/tracker.py` | MediaPipe wrapper: camera frame -> the driving hand's 21 points |
-| `james_gestures/sim.py` | `SimLink`: MuJoCo stand-in for the board, same protocol, kinematic only (no physics) |
-| `sim/` | MuJoCo model `arm.xml` and the printed-part meshes it uses |
-| `demo.py` | Webcam demo with HUD: state, gesture, joint angles, joystick bar, voice readout |
-| `check_board.py` | `python check_board.py COM3`: sends PING, waits 3 s for PONG, nothing moves |
-| `test_motors.py` | `python test_motors.py COM3`: type `arm`, `shoulder 100`, `elbow +5`, `claw 1`, `home`, `stop`, `quit`. Moves are clamped to the limits in `arm.py` |
-| `tools/flash_unoq.py` | Push a sketch to the UNO Q over adb, restart the app there, PING for PONG. Replaces clicking Run in App Lab |
-| `firmware/arm_receiver_unoq/` | **The real firmware.** UNO Q sketch: Monitor commands -> PCA9685 servos + TB6600 stepper |
-| `firmware/bringup_unoq/` | One-at-a-time hardware check on the UNO Q: `scan` (I2C), `servo` (sweep shoulder), `base` (200 steps out and back), `off`, `help` |
-| `firmware/arm_receiver/` | Older classic-Arduino version (Servo library, USB Serial). Not for the UNO Q |
-| `tests/test_arm.py` | Poses, noise rejection, arming, stop, claw, speed limits, hand lost, clamping |
-| `tests/test_joystick.py` | Point/peace joystick: one joint at a time, dead zone, un-point re-zeroes |
-| `tests/test_voice_and_fist.py` | Voice parsing, voice -> arm, pinch-vs-fist |
-| `tests/test_serial_link.py` | The serial link survives the board vanishing and only trusts it again after PONG |
-
-## Troubleshooting
-
-- **No PONG** from `check_board.py` after the board lost power: the app on the UNO Q is not running.
-  Run `.venv\Scripts\python.exe tools\flash_unoq.py --no-flash` (restarts the app over adb and PINGs),
-  or press Run in App Lab.
-- **The board reboots the moment `ARM 1` is sent**: power problem. Something on the arm is loading the board's
-  supply. Give the TB6600 and the PCA9685 their own supplies and share only ground. The firmware now enables
-  the stepper driver only while the base is actually moving, so arming alone should not trip it.
-- **Wrong camera**: try `--camera 0`, `1`, `2`. A black image is usually the IR camera.
-- **"Failed to create a model"** with `--voice`: point `--vosk-model` at the unzipped model folder.
-- **Red "BOARD LOST" line in the demo**: the board dropped off USB or rebooted. The demo disarms, keeps
-  running, and reconnects by itself once the board answers PONG. If it never comes back, see "No PONG".
-
-## Tune on the real arm
-
-- `default_joints()` in `arm.py`: each joint's `lo` / `hi` / `home` / `max_speed`. Start slow and raise it.
-- `ArmConfig` in `arm.py`: hold times, `stick_dead` / `stick_full` for the joystick feel.
-- Firmware: `CLAW_OPEN` / `CLAW_CLOSED`, `STEPS_PER_DEG` (change if the base is geared), `STEP_US` (base speed).
-- If pinch is too touchy, raise `GestureConfig.pinch_ratio` in `gestures.py` (0.33 default; higher with gloves).
-  The HUD prints the finger ratios and the thumb-index gap so you can see what it measures.
-
-</details>
-
----
-
-Gesture code: MIT, © 2026 Chintha Victor Isaac (from JAMES, github.com/victorisaacchinta-eng/james;
-`handpose.py` and `motion.py` are vendored verbatim). MediaPipe hand model: Google, Apache 2.0.
+Gesture classifier and filter: MIT, © 2026 Chintha Victor Isaac (from
+[JAMES](https://github.com/victorisaacchinta-eng/james); `handpose.py` and `motion.py` are vendored verbatim).
+MediaPipe hand model: Google, Apache 2.0. Vosk: Alpha Cephei, Apache 2.0. Everything else: MIT.

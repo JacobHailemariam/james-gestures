@@ -7,7 +7,7 @@ import math
 
 import pytest
 
-mujoco = pytest.importorskip("mujoco")
+mujoco = pytest.importorskip("mujoco", exc_type=ImportError)   # skip if missing OR blocked (e.g. DLL policy)
 
 from james_gestures import ArmConfig, ArmController, PRESETS, default_joints  # noqa: E402
 from james_gestures import handpose as HP  # noqa: E402
