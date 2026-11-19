@@ -57,10 +57,10 @@ the mic and counts false commands), `tools/solve_poses.py` (computes named poses
 
 | Issue | Status | What changed |
 |---|---|---|
-| 1 preset locks gestures | **Fixed** | `6207a83` re-applied with its test. Plus a bug in it: open palm is also the idle pose, so a resting palm aborted a preset on the next frame. Takeback now waits until the preset has arrived (2 new tests) |
+| 1 preset locks gestures | **Fixed** | `8d1c85a` re-applied with its test. Plus a bug in it: open palm is also the idle pose, so a resting palm aborted a preset on the next frame. Takeback now waits until the preset has arrived (2 new tests) |
 | 2 real hands | **Partly fixed, needs your numbers** | Dropout grace re-applied (one lost frame no longer resets the 1 s arm hold). Background hands smaller than `--min-hand` (0.05 of frame height) can no longer drive. New `demo.py --log hands.csv` + `tools/tune_hands.py` to measure real hands (below). Thresholds NOT changed blind |
 | 3 board reboots | **Software side fixed** | PING-on-open + BOARD LOST + `arm.resync()` re-applied. Power wiring and the `@reboot` cron are still yours |
-| 4 late commands | **Fixed** | `845621d` re-applied: max 10 joint updates/s per joint, final position always sent |
+| 4 late commands | **Fixed** | `a60c853` re-applied: max 10 joint updates/s per joint, final position always sent |
 | 5 voice dies silently | **Fixed** | A bad audio chunk no longer kills the thread; dead thread or 2 s of mic silence shows a red `VOICE DOWN` line, prints once, and the mic is reopened every 3 s (4 new tests) |
 | 6 calibration | Untouched | Needs the real arm |
 
@@ -75,7 +75,7 @@ next to the thresholds, which is exactly what is needed to tune them.
 ## 3. Open issues, most important first
 
 Each one has: what we see, how to reproduce it without hardware, what we already know, and what a fix
-probably looks like. Line numbers are for commit `1d78dfa`.
+probably looks like. Line numbers are for commit `8a5860a`.
 
 ### Issue 1: after any voice preset, hand gestures do nothing
 
@@ -90,7 +90,7 @@ bottom of the window.
 **Reproduce.** `python demo.py --sim --camera 0 --voice`. Say "james home". Hold an open palm, then point
 and move: the HUD says PRESET and nothing moves. Say "james follow": now it works.
 
-**Fix we wrote and then reverted** (commit `6207a83`, still in history): holding an open palm for 1 s
+**Fix we wrote and then reverted** (commit `8d1c85a`, still in history): holding an open palm for 1 s
 during a preset gives control back to the hand. We reverted the whole laptop side to a known-good
 version under time pressure, so this needs to be re-applied cleanly with its test
 (`test_open_palm_takes_steering_back_after_a_preset` in that commit).
@@ -105,7 +105,7 @@ read as something else.
 - Tests use perfect synthetic hands (`handpose.synth`). Real MediaPipe landmarks from a laptop camera at
   an angle produce finger ratios the thresholds were never checked against.
 - One dropped tracking frame resets the 1 s open-palm timer (`arm.py`, the `g.hand is None` branch), so a
-  flickering hand may never finish arming. Fixed in `6207a83`, reverted with Issue 1.
+  flickering hand may never finish arming. Fixed in `8d1c85a`, reverted with Issue 1.
 - Pinch is checked before point/peace in `handpose.py`; a straight index with the thumb close beside it can
   read as pinch.
 - Any hand in view counts, including someone far in the background.
@@ -128,7 +128,7 @@ USB cable. The firmware already only enables the stepper while it moves.
 
 **Software side still open.** The demo never checks that the board answers, so after a reboot it keeps
 showing ARMED while the board ignores everything. A PING-on-start check and a BOARD LOST warning were in
-`6207a83` and got reverted. There is also no auto-start of the sketch after a reboot (a cron line on the
+`8d1c85a` and got reverted. There is also no auto-start of the sketch after a reboot (a cron line on the
 board, see the end of this file).
 
 ### Issue 4: commands arrive late
@@ -137,7 +137,7 @@ board, see the end of this file).
 
 **What we know.** The demo sends a joint update every frame (about 30 per second per moving joint).
 The UNO Q passes every byte from the laptop through its Linux side to the microcontroller. We
-limited sends to 10 per second per joint in `845621d` (reverted with the rest). Two demo instances running
+limited sends to 10 per second per joint in `a60c853` (reverted with the rest). Two demo instances running
 at once also produced exactly this symptom once, so check `tasklist | findstr python` first.
 
 ### Issue 5: voice fires on noise, or dies silently

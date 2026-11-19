@@ -6,7 +6,7 @@ hardware, so this file lists exactly what was measured, what is ruled out, and w
 **The problem:** with the board on USB and the demo running, no servo on the arm moves. Not from voice, not
 from gestures, not from typed commands.
 
-## 1. What is proven to work (measured Oct 25, commit `a314bef`)
+## 1. What is proven to work (measured Oct 25, commit `13cc459`)
 
 | Layer | Test | Result |
 |---|---|---|
@@ -45,19 +45,19 @@ supply. Things that produce exactly "chip answers, servo dead":
 
 ## 3. If it is the receiver firmware
 
-The last time a servo was **confirmed** to move on the real arm was commit `3d7506c`. Jacob said the
+The last time a servo was **confirmed** to move on the real arm was commit `09b6704`. Jacob said the
 shoulder moved "way too fast" with `test_motors.py`. Every firmware change since then is a suspect:
 
 | Commit | Change |
 |---|---|
-| `083ffc5` | Slew limit: commands set a goal, `tickServos()` in `loop()` moves the pulse 1.2 degrees per 20 ms |
-| `3b136f2` | Per-channel trim; the first command on a channel snaps to 90 then slews |
-| `44b20cc` | Two claw servos, channels 14 and 15 |
-| `1d99838` | `WRIST_LOCK`: wrist held at 90 |
-| `1d78dfa` | Claw channels swapped |
+| `42597d0` | Slew limit: commands set a goal, `tickServos()` in `loop()` moves the pulse 1.2 degrees per 20 ms |
+| `ebe1447` | Per-channel trim; the first command on a channel snaps to 90 then slews |
+| `0c2c8b6` | Two claw servos, channels 14 and 15 |
+| `2e93b3e` | `WRIST_LOCK`: wrist held at 90 |
+| `8a5860a` | Claw channels swapped |
 
 The firmware is `firmware/arm_receiver_unoq/arm_receiver_unoq.ino`. Look at `servoDeg`, `servoWrite`,
-`tickServos`, `allServosOff`, and `loop()`. A quick test: flash the `3d7506c` version of that file (see
+`tickServos`, `allServosOff`, and `loop()`. A quick test: flash the `09b6704` version of that file (see
 section 4) and send `J shoulder 110`. If it moves, the bug is in the slew code.
 
 Nothing in the bringup sketch uses the slew code. That is why the two results above separate the cases.
@@ -76,7 +76,7 @@ python test_motors.py COM3                    # type: arm, shoulder 110, shoulde
 
 To test an old firmware version without losing the current one:
 ```
-git show 3d7506c:firmware/arm_receiver_unoq/arm_receiver_unoq.ino > firmware/old_test.ino
+git show 09b6704:firmware/arm_receiver_unoq/arm_receiver_unoq.ino > firmware/old_test.ino
 python tools/flash_unoq.py --sketch firmware/old_test.ino
 rm firmware/old_test.ino                      # don't commit it; reflash the current receiver afterwards
 ```
@@ -104,7 +104,7 @@ exactly, and the power supply in your photos most likely can't drive these servo
 I compiled `arm_receiver_unoq.ino` on a PC against mock Arduino, Wire, Monitor and PCA9685 libraries and
 replayed your exact sequence: `PING`, `ARM 1`, `J base 135`, `J shoulder 130`, `J elbow 120`, `J wrist 90`,
 `CLAW 1`. The receiver writes the right pulses: shoulder ends at 1796 us (130 degrees), elbow 1722 us, both
-claw jaws mirrored, STOP freezes. The slew, trim and claw changes since `3d7506c` are not the bug. So the
+claw jaws mirrored, STOP freezes. The slew, trim and claw changes since `09b6704` are not the bug. So the
 software path from `J` to `writeMicroseconds` works, like your bringup sketch showed.
 
 ### 6.2 The hole that matches "chip answers, nothing moves"
