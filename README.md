@@ -14,7 +14,7 @@
 <h3 align="center">An extra arm you wear on your back, steered by your hand and your voice.</h3>
 
 > **Built at [Cal Hacks 13.0](https://cal-hacks-13-0.devpost.com/), an MLH hackathon** in San Francisco,
-> October 23 to 25, 2026, by a team of four. Everything here was written that weekend (the vision and voice
+> October 23 to 25, 2026, by a team of three. Everything here was written that weekend (the vision and voice
 > pipeline, the controller, the Arduino firmware, the simulator and the test suite), on top of two open-source
 > (MIT) gesture modules vendored from the JAMES project.
 
@@ -23,8 +23,51 @@ backpack. A laptop webcam watches one hand and a microphone listens for a wake w
 body-worn sensors. It is for people who need a hand they don't have: someone recovering from an injury or living
 with limited mobility, or anyone whose job asks their shoulders to lift all day.
 
+## See it run
+
+<p align="center"><img src="media/sim-voice.gif" alt="MuJoCo simulation: a person wearing the backpack arm, which moves to each voice pose" width="70%"></p>
+<p align="center"><sub>The MuJoCo model of Atlas on its wearer. Each caption is a voice command, sent through the real
+<code>ArmController</code> at the arm's real joint speeds. Drawn by <a href="tools/render_sim.py"><code>tools/render_sim.py</code></a>.</sub></p>
+
+<p align="center"><img src="media/sim-poses.png" alt="The five voice poses: home, left shoulder, right shoulder, left hip, right hip" width="100%"></p>
+
+The same commands drive the real arm over USB; the simulator speaks the board's protocol, so no hardware is
+needed to try it.
+
+### Run the demo yourself
+
+You need Python 3.11 or newer, a webcam, and a microphone. Nothing else: the hand model ships in the repo and
+the voice model (about 40 MB) downloads on first run.
+
+```bash
+git clone https://github.com/JacobHailemariam/james-gestures.git
+cd james-gestures
+python -m venv .venv
+source .venv/bin/activate                      # Windows: .venv\Scripts\activate
+pip install -r requirements.txt -r requirements-voice.txt mujoco
+python demo.py --sim --voice                   # macOS: mjpython demo.py --sim --voice
+```
+
+Two windows open: your webcam, with the hand skeleton and the recognised gesture drawn on it, and the 3D arm.
+
+1. **Voice.** Say **"james home"**, then **"james left shoulder"**, **"james right hip"**, and so on. The arm
+   moves to that pose. **"james stop"** freezes it. The camera window shows what was heard.
+2. **Hand.** Say **"james follow"** to hand control back, then hold an **open palm** for a second until the
+   header turns green (ARMED). **Point** and move your hand to swing the base and shoulder; a **peace sign**
+   bends the elbow; **pinch** closes the claw; a **fist** stops everything.
+3. **Keys**, if you have no mic: `h` home, `r` raise, `e` reach, `t` tuck, `f` follow, `space` stop, `q` quit.
+
 <p align="center"><img src="media/atlas-gestures.gif" alt="Gestures driving the arm: the real gesture reader and arm controller, fed synthetic hands" width="100%"></p>
-<p align="center"><sub>Rendered from the real <code>GestureReader</code> and <code>ArmController</code>. Every number and serial line shown is what the code produced.</sub></p>
+<p align="center"><sub>What step 2 looks like, rendered from the real <code>GestureReader</code> and <code>ArmController</code>. Every number and serial line shown is what the code produced.</sub></p>
+
+No camera handy? `python -m pytest -q` runs all 81 tests with synthetic hands and a headless simulator, and
+`python tools/render_sim.py --gif` redraws the pictures above. With the arm connected, swap `--sim` for
+`--port COM3` (or both, to watch the sim mirror the real arm). Every flag, the wiring and troubleshooting are in
+[`docs/ENGINEERING.md`](docs/ENGINEERING.md).
+
+<sub>On Windows 11, if MuJoCo fails with "An Application Control policy has blocked this file", Smart App
+Control is blocking its DLLs. The camera and voice demo still runs without `--sim`; run the sim on macOS,
+Linux or WSL.</sub>
 
 ## At a glance
 
@@ -169,8 +212,8 @@ PING -> PONG | ARM 1 | ARM 0 | STOP | J <base|shoulder|elbow|wrist> <deg> | CLAW
 
 ## Simulation and kinematics
 
-The MuJoCo model in [`sim/arm.xml`](sim/arm.xml) puts the arm on a model of our backpack, with link lengths read
-from the team's SolidWorks export in [`cad/`](cad/). The simulator speaks the same protocol as the board, so
+The MuJoCo model in [`sim/arm.xml`](sim/arm.xml) puts the arm on a model of our backpack and its wearer, with link
+lengths read from the team's SolidWorks export in [`cad/`](cad/). The simulator speaks the same protocol as the board, so
 `demo.py --sim` drives it with no hardware. [`tools/solve_poses.py`](tools/solve_poses.py) computes the voice
 presets ("james left shoulder", "james right hip") by searching joint space for a pose that puts the fingertip on a
 target without any link passing through the bag.
@@ -185,20 +228,6 @@ target without any link passing through the bag.
 - **Written debugging.** Every hardware failure got a reproducible write-up with measured evidence: see the
   issue log ([`docs/ISSUES.md`](docs/ISSUES.md)) and one investigation end to end
   ([`docs/NOTHING_MOVES.md`](docs/NOTHING_MOVES.md)).
-
-## Try it without hardware
-
-```bash
-git clone https://github.com/JacobHailemariam/james-gestures.git
-cd james-gestures
-python -m venv .venv && source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -r requirements.txt -r requirements-voice.txt mujoco
-python -m pytest -q                                      # 81 tests, no camera needed
-python demo.py --sim --voice                             # your webcam and mic drive the 3D arm
-```
-
-With the board connected: `python demo.py --port COM3 --voice`. Every flag, the wiring, troubleshooting and tuning
-are in [`docs/ENGINEERING.md`](docs/ENGINEERING.md).
 
 ## Repository map
 
