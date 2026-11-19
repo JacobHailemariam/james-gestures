@@ -15,8 +15,8 @@
 
 > **Built at [Cal Hacks 13.0](https://cal-hacks-13-0.devpost.com/), an MLH hackathon** in San Francisco,
 > October 23 to 25, 2026, by a team of four. Everything here was written that weekend (the vision and voice
-> pipeline, the controller, the Arduino firmware, the simulator and the test suite), on top of two modules from
-> our teammate's earlier JAMES gesture project.
+> pipeline, the controller, the Arduino firmware, the simulator and the test suite), on top of two open-source
+> (MIT) gesture modules vendored from the JAMES project.
 
 **Atlas** (Assistive Third Limb for Augmented Strength) is a 4-joint robotic arm with a geared claw, mounted on a
 backpack. A laptop webcam watches one hand and a microphone listens for a wake word. No joystick, no gloves, no
@@ -182,9 +182,9 @@ target without any link passing through the bag.
 - **Measurement tools** for each risky assumption: [`eval_gestures.py`](tools/eval_gestures.py),
   [`eval_voice.py`](tools/eval_voice.py), [`tune_hands.py`](tools/tune_hands.py), and
   [`make_readme_figures.py`](tools/make_readme_figures.py), which draws every figure here from the code and data.
-- **Remote collaboration, 12.5 hours apart.** Our gesture lead worked from Hyderabad with no hardware. We
-  worked through a written issue log ([`docs/ISSUES.md`](docs/ISSUES.md)), reproducible bug reports and patch
-  series ([`docs/NOTHING_MOVES.md`](docs/NOTHING_MOVES.md) is one end to end).
+- **Written debugging.** Every hardware failure got a reproducible write-up with measured evidence: see the
+  issue log ([`docs/ISSUES.md`](docs/ISSUES.md)) and one investigation end to end
+  ([`docs/NOTHING_MOVES.md`](docs/NOTHING_MOVES.md)).
 
 ## Try it without hardware
 
@@ -228,6 +228,22 @@ docs/                engineering notes, issue log, a debugging write-up, measure
   its own health instead of assuming it.
 - **Our first arm design couldn't hold its motors.** We redesigned around the real joint torques and reprinted.
 
+## Who built what
+
+**Jacob Hailemariam** wrote the software and electronics side of Atlas:
+
+- **Firmware** for the Arduino UNO Q: the command protocol, servo pulse mapping for 270-degree servos, the
+  60 deg/s slew limiter, the lazy stepper enable, the claw and wrist handling, and the hardware bring-up sketch.
+- **Controller** ([`arm.py`](james_gestures/arm.py)): the point/peace joystick, joint limits and rate caps,
+  axis lock and move window, the claw-release fix found by the robustness sweep, voice presets and pose saving.
+- **Serial link**: PING handshake, board-loss detection and auto-reconnect, and the 10 Hz send cap that cured
+  the multi-second lag.
+- **Voice**: the wake word, grammar and two-partial stop rule, with the measurement tool that justified them.
+- **Simulation**: the MuJoCo model of the arm on the backpack, link lengths from the CAD, and the pose solver.
+- **Tooling and tests**: the gesture robustness sweep, flashing over adb, the README figures, CI, and most of
+  the 81 tests.
+- **Wiring and bring-up** of the PCA9685, the TB6600 and the UNO Q on the real arm.
+
 ## Team
 
 | | |
@@ -235,10 +251,9 @@ docs/                engineering notes, issue log, a debugging write-up, measure
 | **Victor Espinoza** · UC Davis | Arm design, CAD, motors |
 | **Jacob Hailemariam** · University of Calgary | Embedded, firmware, control software |
 | **Semir Haji** · University of Calgary | Mechanical build, printing |
-| **Victor Isaac** · ACE Engineering College, Hyderabad (remote) | JAMES gesture system |
 
 ---
 
-Gesture classifier and filter: MIT, © 2026 Chintha Victor Isaac (from
-[JAMES](https://github.com/victorisaacchinta-eng/james); `handpose.py` and `motion.py` are vendored verbatim).
-MediaPipe hand model: Google, Apache 2.0. Vosk: Alpha Cephei, Apache 2.0. Everything else: MIT.
+MIT licensed, see [LICENSE](LICENSE). `james_gestures/handpose.py` and `james_gestures/motion.py` are vendored
+unchanged from the open-source JAMES project under its MIT license; their copyright notice is in each file's header.
+MediaPipe hand model: Google, Apache 2.0. Vosk: Alpha Cephei, Apache 2.0.

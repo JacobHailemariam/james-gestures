@@ -1,6 +1,9 @@
 MIT License
 
-Copyright (c) 2026 Chintha Victor Isaac
+Copyright (c) 2026 Jacob Hailemariam and contributors
+
+james_gestures/handpose.py and james_gestures/motion.py are vendored from the JAMES project:
+Copyright (c) 2026 Chintha Victor Isaac, under the same MIT license.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
