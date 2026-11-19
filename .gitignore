@@ -1,3 +1,6 @@
 .venv/
 __pycache__/
 .pytest_cache/
+
+# demo screenshots (press p in demo.py)
+snap-*.png
