@@ -10,6 +10,7 @@
 Steering: open palm = arm / idle · POINT and move: left/right = base, up/down = shoulder · PEACE and move:
 left/right = wrist, up/down = elbow · un-point = stop · pinch = claw · fist = STOP
 Keys: q quit · h home preset · r raise · e reach · t tuck · f follow (hand steers again) · space = STOP
+      p = save the camera window as snap-<gesture>-<n>.png (for screenshots)
 Voice: stop · grab · release · raise · reach · home · tuck · follow   (see james_gestures/voice.py)
 """
 from __future__ import annotations
@@ -98,6 +99,7 @@ def main():
     if not cap.isOpened():
         raise SystemExit(f"camera {a.camera} not available")
     board = next((l for l in getattr(link, "links", [link]) if isinstance(l, SerialLink)), None)
+    snaps = 0
     try:
         misses = 0
         while True:
@@ -196,6 +198,11 @@ def main():
                 arm.stop()
             if k == ord("f"):
                 arm.follow()
+            if k == ord("p"):                     # screenshot of exactly what the window shows
+                snaps += 1
+                name = f"snap-{(g.name or 'none').lower().replace(' ', '-')}-{snaps}.png"
+                cv2.imwrite(name, frame)
+                print("saved", name)
             presets = {ord("h"): "home", ord("r"): "raise", ord("e"): "reach", ord("t"): "tuck"}
             if k in presets:
                 arm.goto_preset(presets[k])

@@ -7,9 +7,16 @@
        Arm links from the printed parts in meshes/ (pivots assumed 15 mm from each link end: measure and adjust). -->
   <compiler meshdir="meshes" angle="degree"/>
   <option gravity="0 0 -9.81"/>
-  <visual><global offwidth="1280" offheight="720"/></visual>
-  <statistic center="0.12 0.05 0.30" extent="0.9"/>
+  <visual>
+    <global offwidth="1280" offheight="720"/>
+    <headlight ambient="0.35 0.35 0.35" diffuse="0.45 0.45 0.45" specular="0.1 0.1 0.1"/>
+    <quality shadowsize="4096"/>
+  </visual>
+  <statistic center="0.12 -0.10 0.20" extent="1.3"/>
   <asset>
+    <texture name="sky" type="skybox" builtin="gradient" rgb1="0.96 0.93 0.87" rgb2="0.80 0.77 0.71" width="512" height="512"/>
+    <texture name="grid" type="2d" builtin="checker" rgb1="0.90 0.87 0.81" rgb2="0.84 0.81 0.75" width="512" height="512"/>
+    <material name="floor" texture="grid" texrepeat="6 6" reflectance="0.05"/>
     <mesh name="base" file="base.stl" scale="0.001 0.001 0.001"/>
     <mesh name="lid" file="lid.stl" scale="0.001 0.001 0.001"/>
     <mesh name="link1" file="link1.stl" scale="0.001 0.001 0.001"/>
@@ -23,8 +30,35 @@
   </default>
   <worldbody>
     <light pos="0.3 0.8 1.2" dir="-0.1 -0.6 -0.8"/>
-    <geom name="floor" type="plane" size="1 1 0.1" rgba="0.85 0.85 0.85 1" contype="1" conaffinity="1"/>
-    <!-- backpack: 245 wide, 420 tall, 50 thick, standing on the floor, back face at y = 0 -->
+    <light pos="-0.6 -1.2 1.4" dir="0.4 0.7 -0.6" diffuse="0.35 0.35 0.35" castshadow="false"/>
+    <!-- The wearer, visual only (no contacts, not used by the pose solver), so the poses read at a glance.
+         Placed from the solver's targets in tools/solve_poses.py: shoulders level with the bag top (targets
+         "above the shoulder" at z = 0.56), hips at the bag bottom (targets "beside the hip" at z = 0.15),
+         back against the bag at y = -0.05, facing -y. Wearer's left = +x. About 1.68 m tall. -->
+    <geom name="floor" type="plane" size="3 3 0.1" pos="0 0 -0.95" material="floor" contype="1" conaffinity="1"/>
+    <geom name="torso" type="ellipsoid" size="0.165 0.105 0.25" pos="0.1225 -0.160 0.215" rgba="0.80 0.76 0.71 1"/>
+    <geom name="shoulders" type="capsule" size="0.055" fromto="-0.065 -0.160 0.425 0.310 -0.160 0.425" rgba="0.80 0.76 0.71 1"/>
+    <geom name="neck" type="capsule" size="0.045" fromto="0.1225 -0.165 0.45 0.1225 -0.170 0.53" rgba="0.80 0.76 0.71 1"/>
+    <geom name="head" type="sphere" size="0.095" pos="0.1225 -0.175 0.630" rgba="0.80 0.76 0.71 1"/>
+    <geom name="pelvis" type="ellipsoid" size="0.155 0.100 0.100" pos="0.1225 -0.160 0.000" rgba="0.80 0.76 0.71 1"/>
+    <geom name="arm_upper_l" type="capsule" size="0.042" fromto="0.330 -0.160 0.420 0.345 -0.165 0.140" rgba="0.80 0.76 0.71 1"/>
+    <geom name="arm_lower_l" type="capsule" size="0.036" fromto="0.345 -0.165 0.140 0.345 -0.210 -0.110" rgba="0.80 0.76 0.71 1"/>
+    <geom name="hand_l" type="sphere" size="0.045" pos="0.345 -0.215 -0.160" rgba="0.80 0.76 0.71 1"/>
+    <geom name="arm_upper_r" type="capsule" size="0.042" fromto="-0.085 -0.160 0.420 -0.100 -0.165 0.140" rgba="0.80 0.76 0.71 1"/>
+    <geom name="arm_lower_r" type="capsule" size="0.036" fromto="-0.100 -0.165 0.140 -0.100 -0.210 -0.110" rgba="0.80 0.76 0.71 1"/>
+    <geom name="hand_r" type="sphere" size="0.045" pos="-0.100 -0.215 -0.160" rgba="0.80 0.76 0.71 1"/>
+    <geom name="leg_upper_l" type="capsule" size="0.065" fromto="0.205 -0.160 -0.020 0.210 -0.155 -0.480" rgba="0.80 0.76 0.71 1"/>
+    <geom name="leg_lower_l" type="capsule" size="0.050" fromto="0.210 -0.155 -0.480 0.210 -0.150 -0.890" rgba="0.80 0.76 0.71 1"/>
+    <geom name="foot_l" type="box" size="0.045 0.110 0.025" pos="0.210 -0.210 -0.925" rgba="0.80 0.76 0.71 1"/>
+    <geom name="leg_upper_r" type="capsule" size="0.065" fromto="0.040 -0.160 -0.020 0.035 -0.155 -0.480" rgba="0.80 0.76 0.71 1"/>
+    <geom name="leg_lower_r" type="capsule" size="0.050" fromto="0.035 -0.155 -0.480 0.035 -0.150 -0.890" rgba="0.80 0.76 0.71 1"/>
+    <geom name="foot_r" type="box" size="0.045 0.110 0.025" pos="0.035 -0.210 -0.925" rgba="0.80 0.76 0.71 1"/>
+    <!-- backpack straps over the shoulders -->
+    <geom name="strap_l" type="capsule" size="0.016" fromto="0.200 -0.045 0.400 0.200 -0.160 0.485" rgba="0.20 0.22 0.28 1"/>
+    <geom name="strap_l2" type="capsule" size="0.016" fromto="0.200 -0.160 0.485 0.200 -0.258 0.330" rgba="0.20 0.22 0.28 1"/>
+    <geom name="strap_r" type="capsule" size="0.016" fromto="0.045 -0.045 0.400 0.045 -0.160 0.485" rgba="0.20 0.22 0.28 1"/>
+    <geom name="strap_r2" type="capsule" size="0.016" fromto="0.045 -0.160 0.485 0.045 -0.258 0.330" rgba="0.20 0.22 0.28 1"/>
+    <!-- backpack: 245 wide, 420 tall, 50 thick, worn with its bottom at hip height, back face at y = 0 -->
     <geom name="bag" type="box" size="0.1225 0.025 0.210" pos="0.1225 -0.025 0.210" rgba="0.25 0.28 0.35 1"/>
     <!-- mounting plate 150 x 150 x 10 and the 140 mm turntable, 10 thick -->
     <geom name="plate" type="box" size="0.075 0.005 0.075" pos="0.155 0.005 0.268" rgba="0.55 0.55 0.6 1"/>
