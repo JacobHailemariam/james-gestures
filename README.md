@@ -19,7 +19,8 @@
 > (MIT) gesture modules vendored from the JAMES project.
 
 **Atlas** (Assistive Third Limb for Augmented Strength) is a 4-joint robotic arm with a geared claw, mounted on a
-backpack. A laptop webcam watches one hand and a microphone listens for a wake word. No joystick, no gloves, no
+backpack. The idea came from Doctor Octopus's arms in *Spider-Man 2*: an extra limb on your back that works
+alongside your own arms, without a controller in your hands. A laptop webcam watches one hand and a microphone listens for a wake word. No joystick, no gloves, no
 body-worn sensors. It is for people who need a hand they don't have: someone recovering from an injury or living
 with limited mobility, or anyone whose job asks their shoulders to lift all day.
 
